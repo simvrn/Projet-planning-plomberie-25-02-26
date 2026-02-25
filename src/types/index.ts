@@ -10,6 +10,8 @@ export interface Intervention {
   address?: string;
   tenantName?: string;
   phone?: string;
+  pdfDataUrl?: string; // PDF encodé en base64
+  pdfName?: string; // Nom du fichier PDF
   createdAt: number;
   updatedAt: number;
 }
@@ -42,7 +44,7 @@ export interface EquipmentKeyword {
   isDefault?: boolean;
 }
 
-export type CalendarView = 'month' | 'week';
+export type CalendarView = 'month' | 'week' | 'techweek';
 
 export interface PanelState {
   isOpen: boolean;
@@ -50,4 +52,5 @@ export interface PanelState {
   selectedDate: string | null;
   selectedTime: string | null;
   editingIntervention: Intervention | null;
+  prefilledTechnicianIds?: string[];
 }

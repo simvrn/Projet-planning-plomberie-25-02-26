@@ -1,9 +1,9 @@
-// Generate time slots from 07:00 to 18:00 in 30-minute increments
+// Generate time slots from 06:00 to 20:00 in 30-minute increments
 export function generateTimeSlots(): string[] {
   const slots: string[] = [];
-  for (let hour = 7; hour <= 18; hour++) {
+  for (let hour = 6; hour <= 20; hour++) {
     slots.push(`${hour.toString().padStart(2, '0')}:00`);
-    if (hour < 18) {
+    if (hour < 20) {
       slots.push(`${hour.toString().padStart(2, '0')}:30`);
     }
   }
@@ -29,8 +29,8 @@ export function minutesToTime(minutes: number): string {
 export function roundToHalfHour(time: string): string {
   const minutes = timeToMinutes(time);
   const rounded = Math.round(minutes / 30) * 30;
-  // Clamp between 07:00 and 18:00
-  const clamped = Math.min(Math.max(rounded, 7 * 60), 18 * 60);
+  // Clamp between 06:00 and 20:00
+  const clamped = Math.min(Math.max(rounded, 6 * 60), 20 * 60);
   return minutesToTime(clamped);
 }
 
@@ -47,7 +47,7 @@ export function formatTimeRange(start: string, end: string): string {
 // Get slot index for positioning
 export function getSlotIndex(time: string): number {
   const minutes = timeToMinutes(time);
-  const startMinutes = 7 * 60; // 07:00
+  const startMinutes = 6 * 60; // 06:00
   return (minutes - startMinutes) / 30;
 }
 

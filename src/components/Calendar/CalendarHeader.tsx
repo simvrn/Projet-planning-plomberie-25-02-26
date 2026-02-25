@@ -69,6 +69,19 @@ export function CalendarHeader() {
             >
               Mois
             </button>
+            <button
+              onClick={() => {
+                setTab('calendar');
+                setView('techweek');
+              }}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                isCalendarTab && currentView === 'techweek'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Planning
+            </button>
           </div>
 
           {/* Calendar navigation (only when in calendar tab) */}

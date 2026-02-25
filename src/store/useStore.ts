@@ -69,7 +69,7 @@ interface StoreState {
   goToToday: () => void;
 
   // Actions - Panel
-  openCreatePanel: (date: string, time?: string) => void;
+  openCreatePanel: (date: string, time?: string, technicianIds?: string[]) => void;
   openEditPanel: (intervention: Intervention) => void;
   closePanel: () => void;
 
@@ -157,7 +157,7 @@ export const useStore = create<StoreState>()(
 
       navigatePrev: () => set((state) => {
         const newDate = new Date(state.currentDate);
-        if (state.currentView === 'week') {
+        if (state.currentView === 'week' || state.currentView === 'techweek') {
           newDate.setDate(newDate.getDate() - 7);
         } else {
           newDate.setMonth(newDate.getMonth() - 1);
@@ -167,7 +167,7 @@ export const useStore = create<StoreState>()(
 
       navigateNext: () => set((state) => {
         const newDate = new Date(state.currentDate);
-        if (state.currentView === 'week') {
+        if (state.currentView === 'week' || state.currentView === 'techweek') {
           newDate.setDate(newDate.getDate() + 7);
         } else {
           newDate.setMonth(newDate.getMonth() + 1);
@@ -178,13 +178,14 @@ export const useStore = create<StoreState>()(
       goToToday: () => set({ currentDate: new Date() }),
 
       // Panel actions
-      openCreatePanel: (date, time) => set({
+      openCreatePanel: (date, time, technicianIds) => set({
         panel: {
           isOpen: true,
           mode: 'create',
           selectedDate: date,
           selectedTime: time || '08:00',
           editingIntervention: null,
+          prefilledTechnicianIds: technicianIds,
         }
       }),
 
@@ -205,6 +206,7 @@ export const useStore = create<StoreState>()(
           selectedDate: null,
           selectedTime: null,
           editingIntervention: null,
+          prefilledTechnicianIds: undefined,
         }
       }),
 
