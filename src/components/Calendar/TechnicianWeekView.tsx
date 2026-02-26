@@ -94,11 +94,20 @@ function TechCard({ intervention, techColor, onEdit, onDelete }: TechCardProps) 
           )}
         </button>
 
-        {/* Icône PDF — toujours visible, centrée à droite */}
+        {/* Bouton supprimer — haut droite, visible au survol */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowConfirm(true); }}
+          className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all text-base leading-none"
+          title="Supprimer"
+        >
+          ×
+        </button>
+
+        {/* Icône PDF — bas droite, toujours visible */}
         {hasPdf && (
           <button
             onClick={(e) => { e.stopPropagation(); e.preventDefault(); setShowPdf(true); }}
-            className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-6 h-6 flex items-center justify-center rounded text-red-500 bg-red-50 hover:bg-red-100 transition-colors"
+            className="absolute bottom-1 right-1 z-10 w-6 h-6 flex items-center justify-center rounded text-red-500 bg-red-50 hover:bg-red-100 transition-colors"
             title="Voir le PDF"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -106,15 +115,6 @@ function TechCard({ intervention, techColor, onEdit, onDelete }: TechCardProps) 
             </svg>
           </button>
         )}
-
-        {/* Bouton × — visible au survol */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowConfirm(true); }}
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all text-sm leading-none"
-          title="Supprimer"
-        >
-          ×
-        </button>
       </div>
     </>
   );
@@ -131,10 +131,13 @@ export function TechnicianWeekView() {
     selectedTechnicianFilters,
     openCreatePanel,
     openEditPanel,
+    openDuplicatePanel,
     openDayRecap,
     updateIntervention,
     deleteIntervention,
     interventions,
+    interventionClipboard,
+    clearClipboard,
   } = useStore();
 
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
@@ -159,7 +162,41 @@ export function TechnicianWeekView() {
     );
   }
 
+  // Handler de clic sur une cellule : coller si clipboard actif, sinon créer
+  const handleCellClick = (dateStr: string, techId: string) => {
+    if (interventionClipboard) {
+      openDuplicatePanel(interventionClipboard, dateStr);
+    } else {
+      openCreatePanel(dateStr, '08:00', [techId]);
+    }
+  };
+
   return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Bannière presse-papiers */}
+      {interventionClipboard && (
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-sm">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <span className="flex-1">
+            <span className="font-semibold">Intervention copiée</span>
+            {interventionClipboard.taskText && (
+              <span className="opacity-80"> — {interventionClipboard.taskText}</span>
+            )}
+            <span className="opacity-70 ml-2 text-xs">Cliquez sur une cellule pour coller</span>
+          </span>
+          <button
+            onClick={clearClipboard}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-blue-700 transition-colors text-white opacity-80 hover:opacity-100"
+            title="Annuler la copie"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
     <div className="flex-1 overflow-auto">
       <table className="w-full border-collapse">
         <colgroup>
@@ -271,8 +308,8 @@ export function TechnicianWeekView() {
                   >
                     {/* Div absolue : retiré du flux → le td ne peut plus s'agrandir */}
                     <div
-                      className="absolute inset-0 flex flex-col cursor-pointer overflow-hidden"
-                      onClick={() => openCreatePanel(dateStr, '08:00', [tech.id])}
+                      className={`absolute inset-0 flex flex-col overflow-hidden ${interventionClipboard ? 'cursor-copy' : 'cursor-pointer'}`}
+                      onClick={() => handleCellClick(dateStr, tech.id)}
                     >
                       {/* Zone scrollable des interventions */}
                       <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-1.5 min-h-0">
@@ -287,9 +324,14 @@ export function TechnicianWeekView() {
                         ))}
                       </div>
 
-                      {/* Bouton + — toujours visible en bas */}
+                      {/* Bouton + / Coller — toujours visible en bas */}
                       <div className="flex-shrink-0 px-1.5 pb-1.5">
-                        {hasInterventions ? (
+                        {interventionClipboard ? (
+                          // Mode clipboard : bouton coller
+                          <div className="w-full text-center text-blue-400 text-xs py-0.5 rounded leading-none select-none">
+                            Coller ici
+                          </div>
+                        ) : hasInterventions ? (
                           // Bouton cliquable quand interventions existantes
                           <button
                             onClick={(e) => {
@@ -316,6 +358,7 @@ export function TechnicianWeekView() {
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

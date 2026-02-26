@@ -13,6 +13,7 @@ import { isValidTimeRange } from '../../utils/time';
 const PDF_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 
 interface FormData {
+  date: string;
   startTime: string;
   endTime: string;
   technicianIds: string[];
@@ -26,6 +27,7 @@ interface FormData {
 }
 
 const initialFormData: FormData = {
+  date: '',
   startTime: '08:00',
   endTime: '09:00',
   technicianIds: [],
@@ -45,6 +47,7 @@ export function InterventionPanel() {
     createIntervention,
     updateIntervention,
     deleteIntervention,
+    copyIntervention,
   } = useStore();
 
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -55,12 +58,15 @@ export function InterventionPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isDuplicate = Boolean(panel.duplicatingFrom);
+
   // Reset form when panel opens
   useEffect(() => {
     if (panel.isOpen) {
       if (panel.mode === 'edit' && panel.editingIntervention) {
         const intervention = panel.editingIntervention;
         setFormData({
+          date: intervention.date,
           startTime: intervention.startTime,
           endTime: intervention.endTime,
           technicianIds: intervention.technicianIds,
@@ -75,9 +81,29 @@ export function InterventionPanel() {
         setShowOptionalFields(
           Boolean(intervention.address || intervention.tenantName || intervention.phone)
         );
+      } else if (panel.duplicatingFrom) {
+        // Mode duplication : pré-remplir depuis l'intervention d'origine
+        const src = panel.duplicatingFrom;
+        setFormData({
+          date: panel.selectedDate || src.date,
+          startTime: src.startTime,
+          endTime: src.endTime,
+          technicianIds: src.technicianIds,
+          taskText: src.taskText,
+          equipment: src.equipment || '',
+          address: src.address || '',
+          tenantName: src.tenantName || '',
+          phone: src.phone || '',
+          pdfDataUrl: src.pdfDataUrl || '',
+          pdfName: src.pdfName || '',
+        });
+        setShowOptionalFields(
+          Boolean(src.address || src.tenantName || src.phone)
+        );
       } else {
         setFormData({
           ...initialFormData,
+          date: panel.selectedDate || '',
           startTime: panel.selectedTime || '08:00',
           endTime: panel.selectedTime
             ? `${(parseInt(panel.selectedTime.split(':')[0]) + 1).toString().padStart(2, '0')}:00`
@@ -90,18 +116,14 @@ export function InterventionPanel() {
       setPdfError('');
       setShowDeleteConfirm(false);
     }
-  }, [panel.isOpen, panel.mode, panel.editingIntervention, panel.selectedTime]);
+  }, [panel.isOpen, panel.mode, panel.editingIntervention, panel.selectedTime, panel.duplicatingFrom]);
 
-  // Focus trap and escape key
+  // Escape key
   useEffect(() => {
     if (!panel.isOpen) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closePanel();
-      }
+      if (e.key === 'Escape') closePanel();
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [panel.isOpen, closePanel]);
@@ -109,13 +131,11 @@ export function InterventionPanel() {
   const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (file.size > PDF_MAX_SIZE) {
       setPdfError('Fichier trop volumineux (max 5 Mo)');
       e.target.value = '';
       return;
     }
-
     setPdfError('');
     const reader = new FileReader();
     reader.onload = () => {
@@ -136,22 +156,22 @@ export function InterventionPanel() {
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
-
+    if (!formData.date) {
+      newErrors.date = 'La date est requise';
+    }
     if (!isValidTimeRange(formData.startTime, formData.endTime)) {
       newErrors.endTime = "L'heure de fin doit être après l'heure de début";
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validate() || !panel.selectedDate) return;
+    if (!validate()) return;
 
     const data = {
-      date: panel.selectedDate,
+      date: formData.date,
       startTime: formData.startTime,
       endTime: formData.endTime,
       technicianIds: formData.technicianIds,
@@ -180,33 +200,39 @@ export function InterventionPanel() {
     }
   };
 
+  const handleDuplicate = () => {
+    if (panel.editingIntervention) {
+      copyIntervention(panel.editingIntervention);
+      closePanel();
+    }
+  };
+
   if (!panel.isOpen) return null;
 
-  const dateDisplay = panel.selectedDate
-    ? format(new Date(panel.selectedDate), 'EEEE d MMMM yyyy', { locale: fr })
+  const dateDisplay = formData.date
+    ? format(new Date(formData.date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })
     : '';
 
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={closePanel}
-      />
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={closePanel} />
 
       {/* Panel */}
       <div
         ref={panelRef}
-        className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-xl z-50 flex flex-col animate-slide-in"
-        style={{
-          animation: 'slideIn 0.2s ease-out',
-        }}
+        className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-xl z-50 flex flex-col"
+        style={{ animation: 'slideIn 0.2s ease-out' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              {panel.mode === 'edit' ? 'Modifier' : 'Nouvelle intervention'}
+              {panel.mode === 'edit'
+                ? 'Modifier l\'intervention'
+                : isDuplicate
+                ? 'Dupliquer l\'intervention'
+                : 'Nouvelle intervention'}
             </h2>
             <p className="text-sm text-gray-500 capitalize">{dateDisplay}</p>
           </div>
@@ -223,7 +249,22 @@ export function InterventionPanel() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-auto p-6 space-y-5">
-          {/* Time selection */}
+
+          {/* Date — visible en mode création/duplication */}
+          {panel.mode === 'create' && (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Date</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData((f) => ({ ...f, date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {errors.date && <p className="text-xs text-red-500">{errors.date}</p>}
+            </div>
+          )}
+
+          {/* Horaires */}
           <div className="grid grid-cols-2 gap-4">
             <TimeSelect
               label="Début"
@@ -239,19 +280,19 @@ export function InterventionPanel() {
             />
           </div>
 
-          {/* Technicians */}
+          {/* Techniciens */}
           <TechnicianSelect
             selectedIds={formData.technicianIds}
             onChange={(ids) => setFormData((f) => ({ ...f, technicianIds: ids }))}
           />
 
-          {/* Task description */}
+          {/* Tâche */}
           <TaskInput
             value={formData.taskText}
             onChange={(v) => setFormData((f) => ({ ...f, taskText: v }))}
           />
 
-          {/* Equipment */}
+          {/* Matériel */}
           <EquipmentInput
             value={formData.equipment}
             onChange={(v) => setFormData((f) => ({ ...f, equipment: v }))}
@@ -295,7 +336,7 @@ export function InterventionPanel() {
             {pdfError && <p className="text-xs text-red-500">{pdfError}</p>}
           </div>
 
-          {/* Optional fields toggle */}
+          {/* Infos client — toggle */}
           {!showOptionalFields && (
             <button
               type="button"
@@ -306,7 +347,6 @@ export function InterventionPanel() {
             </button>
           )}
 
-          {/* Optional fields */}
           {showOptionalFields && (
             <div className="space-y-4 pt-2 border-t border-gray-100">
               <p className="text-sm font-medium text-gray-700">Informations client</p>
@@ -341,20 +381,10 @@ export function InterventionPanel() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Supprimer cette intervention ?</span>
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
                   Annuler
                 </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={handleDelete}
-                >
+                <Button type="button" variant="danger" size="sm" onClick={handleDelete}>
                   Supprimer
                 </Button>
               </div>
@@ -362,21 +392,36 @@ export function InterventionPanel() {
           ) : (
             <div className="flex gap-3">
               {panel.mode === 'edit' && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  Supprimer
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    Supprimer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleDuplicate}
+                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    title="Copier cette intervention pour la placer sur une autre semaine"
+                  >
+                    <svg className="w-4 h-4 mr-1 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Dupliquer
+                  </Button>
+                </>
               )}
               <div className="flex-1" />
               <Button type="button" variant="secondary" onClick={closePanel}>
                 Annuler
               </Button>
               <Button type="submit" onClick={handleSubmit}>
-                {panel.mode === 'edit' ? 'Enregistrer' : 'Créer'}
+                {panel.mode === 'edit' ? 'Enregistrer' : isDuplicate ? 'Créer la copie' : 'Créer'}
               </Button>
             </div>
           )}
@@ -385,12 +430,8 @@ export function InterventionPanel() {
 
       <style>{`
         @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-          }
-          to {
-            transform: translateX(0);
-          }
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
       `}</style>
     </>

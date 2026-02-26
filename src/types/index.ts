@@ -10,8 +10,8 @@ export interface Intervention {
   address?: string;
   tenantName?: string;
   phone?: string;
-  pdfDataUrl?: string; // PDF encodé en base64
-  pdfName?: string; // Nom du fichier PDF
+  pdfUrl?: string; // URL publique Supabase Storage
+  pdfName?: string; // Nom du fichier PDF d'origine
   createdAt: number;
   updatedAt: number;
 }
@@ -53,4 +53,5 @@ export interface PanelState {
   selectedTime: string | null;
   editingIntervention: Intervention | null;
   prefilledTechnicianIds?: string[];
+  duplicatingFrom?: Intervention;
 }

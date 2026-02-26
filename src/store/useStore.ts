@@ -57,6 +57,7 @@ interface StoreState {
   panel: PanelState;
   dayRecap: DayRecapState;
   selectedTechnicianFilters: string[];
+  interventionClipboard: Intervention | null;
 
   // Actions - Tab
   setTab: (tab: AppTab) => void;
@@ -71,7 +72,12 @@ interface StoreState {
   // Actions - Panel
   openCreatePanel: (date: string, time?: string, technicianIds?: string[]) => void;
   openEditPanel: (intervention: Intervention) => void;
+  openDuplicatePanel: (intervention: Intervention, targetDate?: string) => void;
   closePanel: () => void;
+
+  // Actions - Clipboard
+  copyIntervention: (intervention: Intervention) => void;
+  clearClipboard: () => void;
 
   // Actions - Day Recap
   openDayRecap: (date: string) => void;
@@ -146,6 +152,7 @@ export const useStore = create<StoreState>()(
         date: null,
       },
       selectedTechnicianFilters: [],
+      interventionClipboard: null,
 
       // Tab actions
       setTab: (tab) => set({ currentTab: tab }),
@@ -199,6 +206,21 @@ export const useStore = create<StoreState>()(
         }
       }),
 
+      openDuplicatePanel: (intervention, targetDate) => set({
+        panel: {
+          isOpen: true,
+          mode: 'create',
+          selectedDate: targetDate || intervention.date,
+          selectedTime: intervention.startTime,
+          editingIntervention: null,
+          duplicatingFrom: intervention,
+        }
+      }),
+
+      copyIntervention: (intervention) => set({ interventionClipboard: intervention }),
+
+      clearClipboard: () => set({ interventionClipboard: null }),
+
       closePanel: () => set({
         panel: {
           isOpen: false,
@@ -207,6 +229,7 @@ export const useStore = create<StoreState>()(
           selectedTime: null,
           editingIntervention: null,
           prefilledTechnicianIds: undefined,
+          duplicatingFrom: undefined,
         }
       }),
 
