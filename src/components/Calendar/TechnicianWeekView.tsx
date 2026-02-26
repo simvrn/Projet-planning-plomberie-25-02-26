@@ -26,7 +26,7 @@ function TechCard({ intervention, techColor, onEdit, onDelete }: TechCardProps) 
   const [showConfirm, setShowConfirm] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const bgColor = getLighterColor(techColor, 0.85);
-  const hasPdf = Boolean(intervention.pdfDataUrl);
+  const hasPdf = Boolean(intervention.pdfUrl);
 
   return (
     <>
@@ -38,7 +38,7 @@ function TechCard({ intervention, techColor, onEdit, onDelete }: TechCardProps) 
 
       {hasPdf && showPdf && (
         <PdfViewerModal
-          pdfDataUrl={intervention.pdfDataUrl!}
+          pdfDataUrl={intervention.pdfUrl!}
           pdfName={intervention.pdfName || 'document.pdf'}
           onClose={() => setShowPdf(false)}
         />

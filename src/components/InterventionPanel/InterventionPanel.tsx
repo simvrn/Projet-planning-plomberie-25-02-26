@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useStore } from '../../store/useStore';
+import { uploadPdf } from '../../lib/supabase';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { TimeSelect } from './TimeSelect';
@@ -22,7 +23,7 @@ interface FormData {
   address: string;
   tenantName: string;
   phone: string;
-  pdfDataUrl: string;
+  pdfUrl: string;
   pdfName: string;
 }
 
@@ -36,7 +37,7 @@ const initialFormData: FormData = {
   address: '',
   tenantName: '',
   phone: '',
-  pdfDataUrl: '',
+  pdfUrl: '',
   pdfName: '',
 };
 
@@ -55,6 +56,7 @@ export function InterventionPanel() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,14 +77,13 @@ export function InterventionPanel() {
           address: intervention.address || '',
           tenantName: intervention.tenantName || '',
           phone: intervention.phone || '',
-          pdfDataUrl: intervention.pdfDataUrl || '',
+          pdfUrl: intervention.pdfUrl || '',
           pdfName: intervention.pdfName || '',
         });
         setShowOptionalFields(
           Boolean(intervention.address || intervention.tenantName || intervention.phone)
         );
       } else if (panel.duplicatingFrom) {
-        // Mode duplication : pré-remplir depuis l'intervention d'origine
         const src = panel.duplicatingFrom;
         setFormData({
           date: panel.selectedDate || src.date,
@@ -94,12 +95,10 @@ export function InterventionPanel() {
           address: src.address || '',
           tenantName: src.tenantName || '',
           phone: src.phone || '',
-          pdfDataUrl: src.pdfDataUrl || '',
+          pdfUrl: src.pdfUrl || '',
           pdfName: src.pdfName || '',
         });
-        setShowOptionalFields(
-          Boolean(src.address || src.tenantName || src.phone)
-        );
+        setShowOptionalFields(Boolean(src.address || src.tenantName || src.phone));
       } else {
         setFormData({
           ...initialFormData,
@@ -128,37 +127,39 @@ export function InterventionPanel() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [panel.isOpen, closePanel]);
 
-  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     if (file.size > PDF_MAX_SIZE) {
       setPdfError('Fichier trop volumineux (max 5 Mo)');
       e.target.value = '';
       return;
     }
+
     setPdfError('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData((f) => ({
-        ...f,
-        pdfDataUrl: reader.result as string,
-        pdfName: file.name,
-      }));
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+
+    try {
+      const { url, name } = await uploadPdf(file);
+      setFormData((f) => ({ ...f, pdfUrl: url, pdfName: name }));
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : 'Erreur lors de l\'upload');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const removePdf = () => {
-    setFormData((f) => ({ ...f, pdfDataUrl: '', pdfName: '' }));
+    setFormData((f) => ({ ...f, pdfUrl: '', pdfName: '' }));
     setPdfError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
-    if (!formData.date) {
-      newErrors.date = 'La date est requise';
-    }
+    if (!formData.date) newErrors.date = 'La date est requise';
     if (!isValidTimeRange(formData.startTime, formData.endTime)) {
       newErrors.endTime = "L'heure de fin doit être après l'heure de début";
     }
@@ -168,7 +169,7 @@ export function InterventionPanel() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate() || isUploading) return;
 
     const data = {
       date: formData.date,
@@ -180,7 +181,7 @@ export function InterventionPanel() {
       address: formData.address || undefined,
       tenantName: formData.tenantName || undefined,
       phone: formData.phone || undefined,
-      pdfDataUrl: formData.pdfDataUrl || undefined,
+      pdfUrl: formData.pdfUrl || undefined,
       pdfName: formData.pdfName || undefined,
     };
 
@@ -215,10 +216,8 @@ export function InterventionPanel() {
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/20 z-40" onClick={closePanel} />
 
-      {/* Panel */}
       <div
         ref={panelRef}
         className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-xl z-50 flex flex-col"
@@ -229,18 +228,14 @@ export function InterventionPanel() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
               {panel.mode === 'edit'
-                ? 'Modifier l\'intervention'
+                ? "Modifier l'intervention"
                 : isDuplicate
-                ? 'Dupliquer l\'intervention'
+                ? "Dupliquer l'intervention"
                 : 'Nouvelle intervention'}
             </h2>
             <p className="text-sm text-gray-500 capitalize">{dateDisplay}</p>
           </div>
-          <button
-            onClick={closePanel}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Fermer"
-          >
+          <button onClick={closePanel} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Fermer">
             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -250,7 +245,7 @@ export function InterventionPanel() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-auto p-6 space-y-5">
 
-          {/* Date — visible en mode création/duplication */}
+          {/* Date — mode création uniquement */}
           {panel.mode === 'create' && (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">Date</label>
@@ -266,83 +261,69 @@ export function InterventionPanel() {
 
           {/* Horaires */}
           <div className="grid grid-cols-2 gap-4">
-            <TimeSelect
-              label="Début"
-              value={formData.startTime}
-              onChange={(v) => setFormData((f) => ({ ...f, startTime: v }))}
-            />
-            <TimeSelect
-              label="Fin"
-              value={formData.endTime}
-              onChange={(v) => setFormData((f) => ({ ...f, endTime: v }))}
-              minTime={formData.startTime}
-              error={errors.endTime}
-            />
+            <TimeSelect label="Début" value={formData.startTime} onChange={(v) => setFormData((f) => ({ ...f, startTime: v }))} />
+            <TimeSelect label="Fin" value={formData.endTime} onChange={(v) => setFormData((f) => ({ ...f, endTime: v }))} minTime={formData.startTime} error={errors.endTime} />
           </div>
 
           {/* Techniciens */}
-          <TechnicianSelect
-            selectedIds={formData.technicianIds}
-            onChange={(ids) => setFormData((f) => ({ ...f, technicianIds: ids }))}
-          />
+          <TechnicianSelect selectedIds={formData.technicianIds} onChange={(ids) => setFormData((f) => ({ ...f, technicianIds: ids }))} />
 
           {/* Tâche */}
-          <TaskInput
-            value={formData.taskText}
-            onChange={(v) => setFormData((f) => ({ ...f, taskText: v }))}
-          />
+          <TaskInput value={formData.taskText} onChange={(v) => setFormData((f) => ({ ...f, taskText: v }))} />
 
           {/* Matériel */}
-          <EquipmentInput
-            value={formData.equipment}
-            onChange={(v) => setFormData((f) => ({ ...f, equipment: v }))}
-          />
+          <EquipmentInput value={formData.equipment} onChange={(v) => setFormData((f) => ({ ...f, equipment: v }))} />
 
           {/* PDF */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700">Document PDF</label>
-            {formData.pdfDataUrl ? (
+
+            {formData.pdfUrl ? (
               <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
                 <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5z"/>
                 </svg>
-                <span className="text-sm text-gray-700 truncate flex-1">{formData.pdfName}</span>
-                <button
-                  type="button"
-                  onClick={removePdf}
-                  className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
-                  title="Supprimer le PDF"
+                <a
+                  href={formData.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline truncate flex-1"
                 >
+                  {formData.pdfName}
+                </a>
+                <button type="button" onClick={removePdf} className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0" title="Retirer le PDF">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             ) : (
-              <label className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="text-sm text-gray-500">Joindre un PDF (max 5 Mo)</span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={handlePdfUpload}
-                />
+              <label className={`flex items-center gap-2 px-3 py-2 border-2 border-dashed rounded-lg transition-colors ${isUploading ? 'border-blue-300 bg-blue-50 cursor-wait' : 'border-gray-200 cursor-pointer hover:border-blue-400 hover:bg-blue-50'}`}>
+                {isUploading ? (
+                  <>
+                    <svg className="w-4 h-4 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    <span className="text-sm text-blue-600">Upload en cours…</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="text-sm text-gray-500">Joindre un PDF (max 5 Mo)</span>
+                  </>
+                )}
+                <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} disabled={isUploading} />
               </label>
             )}
             {pdfError && <p className="text-xs text-red-500">{pdfError}</p>}
           </div>
 
-          {/* Infos client — toggle */}
+          {/* Infos client toggle */}
           {!showOptionalFields && (
-            <button
-              type="button"
-              onClick={() => setShowOptionalFields(true)}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
+            <button type="button" onClick={() => setShowOptionalFields(true)} className="text-sm text-blue-600 hover:text-blue-700 font-medium">
               + Ajouter infos client/chantier
             </button>
           )}
@@ -350,26 +331,10 @@ export function InterventionPanel() {
           {showOptionalFields && (
             <div className="space-y-4 pt-2 border-t border-gray-100">
               <p className="text-sm font-medium text-gray-700">Informations client</p>
-              <Input
-                label="Adresse"
-                value={formData.address}
-                onChange={(e) => setFormData((f) => ({ ...f, address: e.target.value }))}
-                placeholder="123 rue de la Paix, 75001 Paris"
-              />
+              <Input label="Adresse" value={formData.address} onChange={(e) => setFormData((f) => ({ ...f, address: e.target.value }))} placeholder="123 rue de la Paix, 75001 Paris" />
               <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Nom locataire"
-                  value={formData.tenantName}
-                  onChange={(e) => setFormData((f) => ({ ...f, tenantName: e.target.value }))}
-                  placeholder="M. Dupont"
-                />
-                <Input
-                  label="Téléphone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="06 12 34 56 78"
-                />
+                <Input label="Nom locataire" value={formData.tenantName} onChange={(e) => setFormData((f) => ({ ...f, tenantName: e.target.value }))} placeholder="M. Dupont" />
+                <Input label="Téléphone" type="tel" value={formData.phone} onChange={(e) => setFormData((f) => ({ ...f, phone: e.target.value }))} placeholder="06 12 34 56 78" />
               </div>
             </div>
           )}
@@ -381,47 +346,29 @@ export function InterventionPanel() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Supprimer cette intervention ?</span>
               <div className="flex gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
-                  Annuler
-                </Button>
-                <Button type="button" variant="danger" size="sm" onClick={handleDelete}>
-                  Supprimer
-                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>Annuler</Button>
+                <Button type="button" variant="danger" size="sm" onClick={handleDelete}>Supprimer</Button>
               </div>
             </div>
           ) : (
             <div className="flex gap-3">
               {panel.mode === 'edit' && (
                 <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
+                  <Button type="button" variant="ghost" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                     Supprimer
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={handleDuplicate}
-                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                    title="Copier cette intervention pour la placer sur une autre semaine"
-                  >
+                  <Button type="button" variant="ghost" onClick={handleDuplicate} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" title="Copier pour une autre semaine">
                     <svg className="w-4 h-4 mr-1 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                     Dupliquer
                   </Button>
                 </>
               )}
               <div className="flex-1" />
-              <Button type="button" variant="secondary" onClick={closePanel}>
-                Annuler
-              </Button>
-              <Button type="submit" onClick={handleSubmit}>
-                {panel.mode === 'edit' ? 'Enregistrer' : isDuplicate ? 'Créer la copie' : 'Créer'}
+              <Button type="button" variant="secondary" onClick={closePanel}>Annuler</Button>
+              <Button type="submit" onClick={handleSubmit} disabled={isUploading}>
+                {isUploading ? 'Upload…' : panel.mode === 'edit' ? 'Enregistrer' : isDuplicate ? 'Créer la copie' : 'Créer'}
               </Button>
             </div>
           )}
