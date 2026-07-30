@@ -1,0 +1,138 @@
+import { useRef } from 'react';
+import { useMemoireStore } from '../../store/useMemoireStore';
+import { Button } from '../ui/Button';
+import { extractTextFromFile } from '../../lib/memoire/textExtraction';
+import { uploadProjectDoc, generateMemoire } from '../../lib/memoire/memoireApi';
+import type { ProjectDocFile } from '../../types/memoire';
+
+const STATUS_LABEL: Record<ProjectDocFile['status'], string> = {
+  extracting: 'Lecture du document...',
+  uploading: 'Envoi...',
+  ready: 'Prêt',
+  error: 'Erreur',
+};
+
+export function ProjectDocsUpload() {
+  const {
+    interlocuteur,
+    corpsDeMetier,
+    projectDocs,
+    addProjectDocs,
+    updateProjectDoc,
+    removeProjectDoc,
+    generationStatus,
+    generationError,
+    startGeneration,
+    setGenerationSuccess,
+    setGenerationError,
+    setStep,
+  } = useMemoireStore();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function processDoc(doc: ProjectDocFile) {
+    try {
+      updateProjectDoc(doc.id, { status: 'extracting' });
+      const extractedText = await extractTextFromFile(doc.file);
+      updateProjectDoc(doc.id, { status: 'uploading', extractedText });
+      const { storagePath } = await uploadProjectDoc(doc.file);
+      updateProjectDoc(doc.id, { status: 'ready', storagePath });
+    } catch (err) {
+      updateProjectDoc(doc.id, {
+        status: 'error',
+        errorMessage: err instanceof Error ? err.message : 'Erreur inconnue',
+      });
+    }
+  }
+
+  function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const ids = addProjectDocs(files);
+    const newDocs = useMemoireStore.getState().projectDocs.filter((d) => ids.includes(d.id));
+    newDocs.forEach((doc) => void processDoc(doc));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const allReady = projectDocs.length > 0 && projectDocs.every((d) => d.status === 'ready');
+
+  async function handleGenerate() {
+    if (!interlocuteur || !corpsDeMetier) return;
+    startGeneration();
+    try {
+      const { downloadUrl } = await generateMemoire({
+        interlocuteur,
+        corpsDeMetier,
+        projectDocs: projectDocs.map((d) => ({
+          name: d.name,
+          storagePath: d.storagePath!,
+          extractedText: d.extractedText!,
+        })),
+      });
+      setGenerationSuccess(downloadUrl);
+      setStep('result');
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : 'Erreur inconnue');
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-12">
+      <h2 className="text-xl font-semibold text-gray-900 mb-1">Documents du projet</h2>
+      <p className="text-sm text-gray-600 mb-6">
+        Uploade le CCTP, les plans, le cahier des charges... (PDF ou Word). L'IA s'appuiera dessus pour
+        rédiger le mémoire.
+      </p>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={(e) => handleFilesSelected(e.target.files)}
+        className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+      />
+
+      {projectDocs.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {projectDocs.map((doc) => (
+            <li
+              key={doc.id}
+              className="flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-gray-900">{doc.name}</p>
+                <p className={`text-xs ${doc.status === 'error' ? 'text-red-600' : 'text-gray-500'}`}>
+                  {doc.status === 'error' ? doc.errorMessage : STATUS_LABEL[doc.status]}
+                </p>
+              </div>
+              <button
+                onClick={() => removeProjectDoc(doc.id)}
+                className="ml-3 text-gray-400 hover:text-red-600 text-sm flex-shrink-0"
+                aria-label="Retirer"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {generationStatus === 'error' && (
+        <p className="mt-4 text-sm text-red-600">Erreur lors de la génération : {generationError}</p>
+      )}
+
+      <div className="mt-8 flex justify-between">
+        <Button variant="secondary" onClick={() => setStep('start')}>
+          Retour
+        </Button>
+        <Button
+          disabled={!allReady || generationStatus === 'generating'}
+          onClick={handleGenerate}
+        >
+          {generationStatus === 'generating' ? 'Génération en cours...' : 'Générer le mémoire'}
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,80 @@
+import { useState } from 'react';
+import { Button } from '../ui/Button';
+import { saveAdminConfig } from '../../lib/memoire/memoireApi';
+import type { CompanyConfig } from '../../types/memoire';
+
+interface CompanyInfoSectionProps {
+  password: string;
+  config: CompanyConfig;
+  onSaved: () => void;
+}
+
+const textareaClassName =
+  'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]';
+
+export function CompanyInfoSection({ password, config, onSaved }: CompanyInfoSectionProps) {
+  const [presentation, setPresentation] = useState(config.presentation);
+  const [moyens, setMoyens] = useState(config.moyens);
+  const [methodes, setMethodes] = useState(config.methodes);
+  const [certifications, setCertifications] = useState(config.certifications);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await saveAdminConfig(password, {
+        systemPrompt: config.system_prompt,
+        presentation,
+        moyens,
+        methodes,
+        certifications,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <h3 className="text-lg font-semibold text-gray-900">Infos entreprise</h3>
+      <p className="text-sm text-gray-600">
+        Ces informations sont injectées dans chaque mémoire technique généré.
+      </p>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Présentation</label>
+        <textarea className={textareaClassName} value={presentation} onChange={(e) => setPresentation(e.target.value)} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Moyens</label>
+        <textarea className={textareaClassName} value={moyens} onChange={(e) => setMoyens(e.target.value)} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Méthodes</label>
+        <textarea className={textareaClassName} value={methodes} onChange={(e) => setMethodes(e.target.value)} />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Certifications</label>
+        <textarea
+          className={textareaClassName}
+          value={certifications}
+          onChange={(e) => setCertifications(e.target.value)}
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <Button onClick={handleSave} disabled={saving}>
+        {saving ? 'Enregistrement...' : 'Enregistrer'}
+      </Button>
+    </div>
+  );
+}
