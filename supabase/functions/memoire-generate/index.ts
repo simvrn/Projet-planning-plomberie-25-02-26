@@ -226,14 +226,14 @@ Deno.serve(async (req) => {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
       .select('system_prompt, presentation, moyens, methodes, certifications')
-      .eq('id', true)
+      .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
 
     const { data: referenceDocs, error: refError } = await supabase
       .from('memoire_reference_docs')
       .select('file_name, corps_de_metier, extracted_text')
-      .or(`corps_de_metier.eq.${corpsDeMetier},corps_de_metier.eq.Général,corps_de_metier.is.null`)
+      .eq('corps_de_metier', corpsDeMetier)
       .order('uploaded_at', { ascending: false })
       .limit(3);
     if (refError) throw new Error(refError.message);

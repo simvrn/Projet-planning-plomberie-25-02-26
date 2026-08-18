@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Button } from '../ui/Button';
 import { saveAdminConfig } from '../../lib/memoire/memoireApi';
-import type { CompanyConfig } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier } from '../../types/memoire';
 
 interface CompanyInfoSectionProps {
   password: string;
+  corpsDeMetier: CorpsDeMetier;
   config: CompanyConfig;
   onSaved: () => void;
 }
@@ -12,7 +13,7 @@ interface CompanyInfoSectionProps {
 const textareaClassName =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]';
 
-export function CompanyInfoSection({ password, config, onSaved }: CompanyInfoSectionProps) {
+export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }: CompanyInfoSectionProps) {
   const [presentation, setPresentation] = useState(config.presentation);
   const [moyens, setMoyens] = useState(config.moyens);
   const [methodes, setMethodes] = useState(config.methodes);
@@ -24,7 +25,7 @@ export function CompanyInfoSection({ password, config, onSaved }: CompanyInfoSec
     setSaving(true);
     setError(null);
     try {
-      await saveAdminConfig(password, {
+      await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt: config.system_prompt,
         presentation,
         moyens,
@@ -41,9 +42,9 @@ export function CompanyInfoSection({ password, config, onSaved }: CompanyInfoSec
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Infos entreprise</h3>
+      <h3 className="text-lg font-semibold text-gray-900">Infos entreprise — {corpsDeMetier}</h3>
       <p className="text-sm text-gray-600">
-        Ces informations sont injectées dans chaque mémoire technique généré.
+        Ces informations sont injectées dans chaque mémoire technique généré pour ce corps de métier.
       </p>
 
       <div>

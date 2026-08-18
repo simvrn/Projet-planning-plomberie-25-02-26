@@ -52,13 +52,15 @@ export async function verifyAdminPassword(password: string): Promise<void> {
 }
 
 export async function getAdminConfig(
-  password: string
+  password: string,
+  corpsDeMetier: CorpsDeMetier
 ): Promise<{ config: CompanyConfig; referenceDocs: ReferenceDoc[] }> {
-  return callMemoireAdmin('get-config', password);
+  return callMemoireAdmin('get-config', password, { corpsDeMetier });
 }
 
 export async function saveAdminConfig(
   password: string,
+  corpsDeMetier: CorpsDeMetier,
   fields: {
     systemPrompt: string;
     presentation: string;
@@ -67,13 +69,13 @@ export async function saveAdminConfig(
     certifications: string;
   }
 ): Promise<void> {
-  await callMemoireAdmin('save-config', password, fields);
+  await callMemoireAdmin('save-config', password, { corpsDeMetier, ...fields });
 }
 
 export async function uploadReferenceDoc(
   password: string,
   file: File,
-  corpsDeMetier: CorpsDeMetier | 'Général' | null,
+  corpsDeMetier: CorpsDeMetier,
   extractedText: string
 ): Promise<ReferenceDoc> {
   const fileBase64 = await fileToBase64(file);

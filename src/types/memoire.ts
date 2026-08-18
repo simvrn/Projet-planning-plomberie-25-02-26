@@ -20,11 +20,12 @@ export interface ReferenceDoc {
   id: string;
   file_name: string;
   storage_path: string;
-  corps_de_metier: string | null;
+  corps_de_metier: CorpsDeMetier;
   uploaded_at: string;
 }
 
 export interface CompanyConfig {
+  corps_de_metier: CorpsDeMetier;
   system_prompt: string;
   presentation: string;
   moyens: string;

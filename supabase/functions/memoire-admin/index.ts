@@ -25,6 +25,8 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
@@ -55,16 +57,22 @@ Deno.serve(async (req) => {
       }
 
       case 'get-config': {
+        const { corpsDeMetier } = body as { corpsDeMetier?: string };
+        if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+          return json({ error: 'corpsDeMetier invalide' }, 400);
+        }
+
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('system_prompt, presentation, moyens, methodes, certifications, updated_at')
-          .eq('id', true)
+          .select('corps_de_metier, system_prompt, presentation, moyens, methodes, certifications, updated_at')
+          .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
 
         const { data: referenceDocs, error: docsError } = await supabase
           .from('memoire_reference_docs')
           .select('id, file_name, storage_path, corps_de_metier, uploaded_at')
+          .eq('corps_de_metier', corpsDeMetier)
           .order('uploaded_at', { ascending: false });
         if (docsError) return json({ error: docsError.message }, 500);
 
@@ -72,13 +80,17 @@ Deno.serve(async (req) => {
       }
 
       case 'save-config': {
-        const { systemPrompt, presentation, moyens, methodes, certifications } = body as {
+        const { corpsDeMetier, systemPrompt, presentation, moyens, methodes, certifications } = body as {
+          corpsDeMetier?: string;
           systemPrompt?: string;
           presentation?: string;
           moyens?: string;
           methodes?: string;
           certifications?: string;
         };
+        if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+          return json({ error: 'corpsDeMetier invalide' }, 400);
+        }
 
         const { error: updateError } = await supabase
           .from('memoire_company_config')
@@ -90,7 +102,7 @@ Deno.serve(async (req) => {
             certifications: certifications ?? '',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', true);
+          .eq('corps_de_metier', corpsDeMetier);
         if (updateError) return json({ error: updateError.message }, 500);
 
         return json({ ok: true });
@@ -99,12 +111,15 @@ Deno.serve(async (req) => {
       case 'upload-reference': {
         const { fileName, corpsDeMetier, extractedText, fileBase64 } = body as {
           fileName?: string;
-          corpsDeMetier?: string | null;
+          corpsDeMetier?: string;
           extractedText?: string;
           fileBase64?: string;
         };
-        if (!fileName || !extractedText || !fileBase64) {
-          return json({ error: 'fileName, extractedText et fileBase64 requis' }, 400);
+        if (!fileName || !corpsDeMetier || !extractedText || !fileBase64) {
+          return json({ error: 'fileName, corpsDeMetier, extractedText et fileBase64 requis' }, 400);
+        }
+        if (!VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+          return json({ error: 'corpsDeMetier invalide' }, 400);
         }
 
         const ext = (fileName.split('.').pop() || 'bin').toLowerCase();
@@ -125,7 +140,7 @@ Deno.serve(async (req) => {
           .insert({
             file_name: fileName,
             storage_path: storagePath,
-            corps_de_metier: corpsDeMetier ?? null,
+            corps_de_metier: corpsDeMetier,
             extracted_text: extractedText,
           })
           .select()

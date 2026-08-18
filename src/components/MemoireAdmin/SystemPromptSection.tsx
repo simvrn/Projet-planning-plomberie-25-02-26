@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { Button } from '../ui/Button';
 import { saveAdminConfig } from '../../lib/memoire/memoireApi';
-import type { CompanyConfig } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier } from '../../types/memoire';
 
 interface SystemPromptSectionProps {
   password: string;
+  corpsDeMetier: CorpsDeMetier;
   config: CompanyConfig;
   onSaved: () => void;
 }
 
-export function SystemPromptSection({ password, config, onSaved }: SystemPromptSectionProps) {
+export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }: SystemPromptSectionProps) {
   const [systemPrompt, setSystemPrompt] = useState(config.system_prompt);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export function SystemPromptSection({ password, config, onSaved }: SystemPromptS
     setSaving(true);
     setError(null);
     try {
-      await saveAdminConfig(password, {
+      await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt,
         presentation: config.presentation,
         moyens: config.moyens,
@@ -35,10 +36,10 @@ export function SystemPromptSection({ password, config, onSaved }: SystemPromptS
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Prompt système</h3>
+      <h3 className="text-lg font-semibold text-gray-900">Prompt système — {corpsDeMetier}</h3>
       <p className="text-sm text-gray-600">
-        Instructions données à l'IA pour rédiger les mémoires techniques (ton, structure attendue,
-        règles à respecter...). Laisser vide pour utiliser le prompt par défaut.
+        Instructions données à l'IA pour rédiger les mémoires techniques de ce corps de métier (ton,
+        structure attendue, règles à respecter...). Laisser vide pour utiliser le prompt par défaut.
       </p>
 
       <textarea
