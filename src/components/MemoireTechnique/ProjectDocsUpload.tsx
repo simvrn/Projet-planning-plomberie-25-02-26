@@ -16,6 +16,7 @@ export function ProjectDocsUpload() {
   const {
     interlocuteur,
     corpsDeMetier,
+    thematiques,
     projectDocs,
     addProjectDocs,
     updateProjectDoc,
@@ -63,6 +64,7 @@ export function ProjectDocsUpload() {
       const { downloadUrl } = await generateMemoire({
         interlocuteur,
         corpsDeMetier,
+        thematiques,
         projectDocs: projectDocs.map((d) => ({
           name: d.name,
           storagePath: d.storagePath!,

@@ -5,6 +5,7 @@ import type {
   GenerationStatus,
   Interlocuteur,
   ProjectDocFile,
+  Thematique,
 } from '../types/memoire';
 
 // Store dédié à la fonctionnalité "Mémoire technique", entièrement séparé du store du planning
@@ -18,6 +19,7 @@ interface MemoireStoreState {
   step: MemoireStep;
   interlocuteur: Interlocuteur | null;
   corpsDeMetier: CorpsDeMetier | null;
+  thematiques: Thematique[];
   projectDocs: ProjectDocFile[];
 
   generationStatus: GenerationStatus;
@@ -31,6 +33,7 @@ interface MemoireStoreState {
   setStep: (step: MemoireStep) => void;
   setInterlocuteur: (value: Interlocuteur) => void;
   setCorpsDeMetier: (value: CorpsDeMetier) => void;
+  toggleThematique: (value: Thematique) => void;
 
   addProjectDocs: (files: File[]) => string[];
   updateProjectDoc: (id: string, data: Partial<ProjectDocFile>) => void;
@@ -51,6 +54,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   step: 'start',
   interlocuteur: null,
   corpsDeMetier: null,
+  thematiques: [],
   projectDocs: [],
 
   generationStatus: 'idle',
@@ -64,6 +68,14 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   setStep: (step) => set({ step }),
   setInterlocuteur: (value) => set({ interlocuteur: value }),
   setCorpsDeMetier: (value) => set({ corpsDeMetier: value }),
+  toggleThematique: (value) => {
+    const current = get().thematiques;
+    set({
+      thematiques: current.includes(value)
+        ? current.filter((t) => t !== value)
+        : [...current, value],
+    });
+  },
 
   addProjectDocs: (files) => {
     const newDocs: ProjectDocFile[] = files.map((file) => ({
@@ -99,6 +111,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       step: 'start',
       interlocuteur: null,
       corpsDeMetier: null,
+      thematiques: [],
       projectDocs: [],
       generationStatus: 'idle',
       downloadUrl: null,

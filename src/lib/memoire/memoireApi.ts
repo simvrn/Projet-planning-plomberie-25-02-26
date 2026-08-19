@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc, Thematique } from '../../types/memoire';
 
 /**
  * Upload un document projet (PDF ou Word) dans le bucket public "memoire_project_docs".
@@ -95,6 +95,7 @@ export async function deleteReferenceDoc(password: string, id: string): Promise<
 export interface GenerateMemoirePayload {
   interlocuteur: Interlocuteur;
   corpsDeMetier: CorpsDeMetier;
+  thematiques: Thematique[];
   projectDocs: { name: string; storagePath: string; extractedText: string }[];
 }
 

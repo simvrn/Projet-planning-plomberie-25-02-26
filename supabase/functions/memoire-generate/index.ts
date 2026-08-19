@@ -45,6 +45,13 @@ const CLAUDE_MODEL = 'claude-opus-5';
 
 const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
+const VALID_THEMATIQUES = [
+  'Moyens humains',
+  'Moyens matériel',
+  'Organisation sur le chantier',
+  'Gestion des astreintes',
+  'Gestion en milieu occupé',
+];
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
@@ -190,6 +197,7 @@ Deno.serve(async (req) => {
   let body: {
     interlocuteur?: string;
     corpsDeMetier?: string;
+    thematiques?: string[];
     projectDocs?: ProjectDoc[];
   };
   try {
@@ -198,13 +206,16 @@ Deno.serve(async (req) => {
     return json({ error: 'Corps de requête JSON invalide' }, 400);
   }
 
-  const { interlocuteur, corpsDeMetier, projectDocs } = body;
+  const { interlocuteur, corpsDeMetier, thematiques, projectDocs } = body;
 
   if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
     return json({ error: 'interlocuteur invalide' }, 400);
   }
   if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
     return json({ error: 'corpsDeMetier invalide' }, 400);
+  }
+  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => VALID_THEMATIQUES.includes(t))) {
+    return json({ error: 'thematiques invalide : au moins une thématique valide requise' }, 400);
   }
   if (!projectDocs || projectDocs.length === 0) {
     return json({ error: 'Au moins un document projet est requis' }, 400);
@@ -215,6 +226,7 @@ Deno.serve(async (req) => {
     .insert({
       interlocuteur,
       corps_de_metier: corpsDeMetier,
+      thematiques,
       project_doc_names: projectDocs.map((d) => d.name),
       status: 'processing',
     })
@@ -267,10 +279,16 @@ ${config.certifications || '(non renseigné)'}`;
       .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 60000)}`)
       .join('\n\n---\n\n');
 
-    const userPrompt = `Rédige un mémoire technique complet pour répondre à un appel d'offres.
+    const thematiquesSection = thematiques.map((t) => `- ${t}`).join('\n');
+
+    const userPrompt = `Rédige un mémoire technique pour répondre à un appel d'offres.
 
 Interlocuteur principal côté entreprise : ${interlocuteur}
 Corps de métier concerné : ${corpsDeMetier}
+
+# Thématiques demandées par le CCTP
+Le mémoire doit traiter EXCLUSIVEMENT les thématiques suivantes (une section par thématique, pas de section hors de cette liste) :
+${thematiquesSection}
 
 # Mémoires de référence de l'entreprise
 (À utiliser UNIQUEMENT pour le ton, le style et la structure — ne reprends jamais leur contenu spécifique à un autre projet.)

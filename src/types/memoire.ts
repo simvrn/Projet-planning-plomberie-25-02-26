@@ -6,6 +6,21 @@ export const INTERLOCUTEURS: Interlocuteur[] = ['Vlad', 'Stéphane', 'Simon', 'E
 
 export const CORPS_DE_METIER: CorpsDeMetier[] = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
 
+export type Thematique =
+  | 'Moyens humains'
+  | 'Moyens matériel'
+  | 'Organisation sur le chantier'
+  | 'Gestion des astreintes'
+  | 'Gestion en milieu occupé';
+
+export const THEMATIQUES: Thematique[] = [
+  'Moyens humains',
+  'Moyens matériel',
+  'Organisation sur le chantier',
+  'Gestion des astreintes',
+  'Gestion en milieu occupé',
+];
+
 export interface ProjectDocFile {
   id: string;
   name: string;
