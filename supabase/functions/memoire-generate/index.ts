@@ -41,7 +41,7 @@ const supabase = createClient(
 );
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
-const CLAUDE_MODEL = 'claude-opus-5';
+const CLAUDE_MODEL = 'claude-sonnet-5';
 
 const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
   try {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, presentation, moyens, methodes, certifications')
+      .select('system_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications')
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
@@ -257,8 +257,11 @@ Deno.serve(async (req) => {
 ## Présentation
 ${config.presentation || '(non renseigné)'}
 
-## Moyens
-${config.moyens || '(non renseigné)'}
+## Moyens humains
+${config.moyens_humains || '(non renseigné)'}
+
+## Moyens matériels
+${config.moyens_materiels || '(non renseigné)'}
 
 ## Méthodes
 ${config.methodes || '(non renseigné)'}

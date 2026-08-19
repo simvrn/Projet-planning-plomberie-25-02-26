@@ -43,7 +43,8 @@ export interface CompanyConfig {
   corps_de_metier: CorpsDeMetier;
   system_prompt: string;
   presentation: string;
-  moyens: string;
+  moyens_humains: string;
+  moyens_materiels: string;
   methodes: string;
   certifications: string;
   updated_at: string;

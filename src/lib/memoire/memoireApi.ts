@@ -82,7 +82,8 @@ export async function saveAdminConfig(
   fields: {
     systemPrompt: string;
     presentation: string;
-    moyens: string;
+    moyensHumains: string;
+    moyensMateriels: string;
     methodes: string;
     certifications: string;
   }

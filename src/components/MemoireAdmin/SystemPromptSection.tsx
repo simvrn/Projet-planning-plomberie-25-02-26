@@ -22,7 +22,8 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
       await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt,
         presentation: config.presentation,
-        moyens: config.moyens,
+        moyensHumains: config.moyens_humains,
+        moyensMateriels: config.moyens_materiels,
         methodes: config.methodes,
         certifications: config.certifications,
       });
