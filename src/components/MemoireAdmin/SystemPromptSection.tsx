@@ -23,7 +23,6 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
         systemPrompt,
         structurePrompt: config.structure_prompt,
         presentation: config.presentation,
-        moyensHumains: config.moyens_humains,
         moyensMateriels: config.moyens_materiels,
         organisationChantier: config.organisation_chantier,
         gestionAstreintes: config.gestion_astreintes,

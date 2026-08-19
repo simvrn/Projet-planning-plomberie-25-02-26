@@ -237,10 +237,18 @@ Deno.serve(async (req) => {
   try {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications')
+      .select('system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications')
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
+
+    const { data: moyensHumains, error: moyensError } = await supabase
+      .from('memoire_moyens_humains')
+      .select('contenu')
+      .eq('corps_de_metier', corpsDeMetier)
+      .eq('interlocuteur', interlocuteur)
+      .single();
+    if (moyensError) throw new Error(moyensError.message);
 
     const { data: referenceDocs, error: refError } = await supabase
       .from('memoire_reference_docs')
@@ -261,8 +269,8 @@ Deno.serve(async (req) => {
 ## Présentation
 ${config.presentation || '(non renseigné)'}
 
-## Moyens humains
-${config.moyens_humains || '(non renseigné)'}
+## Moyens humains (pour ${interlocuteur})
+${moyensHumains.contenu || '(non renseigné)'}
 
 ## Moyens matériels
 ${config.moyens_materiels || '(non renseigné)'}

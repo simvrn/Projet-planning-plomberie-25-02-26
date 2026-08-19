@@ -15,7 +15,6 @@ const textareaClassName =
 
 export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }: CompanyInfoSectionProps) {
   const [presentation, setPresentation] = useState(config.presentation);
-  const [moyensHumains, setMoyensHumains] = useState(config.moyens_humains);
   const [moyensMateriels, setMoyensMateriels] = useState(config.moyens_materiels);
   const [organisationChantier, setOrganisationChantier] = useState(config.organisation_chantier);
   const [gestionAstreintes, setGestionAstreintes] = useState(config.gestion_astreintes);
@@ -33,7 +32,6 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
         systemPrompt: config.system_prompt,
         structurePrompt: config.structure_prompt,
         presentation,
-        moyensHumains,
         moyensMateriels,
         organisationChantier,
         gestionAstreintes,
@@ -59,15 +57,6 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Présentation</label>
         <textarea className={textareaClassName} value={presentation} onChange={(e) => setPresentation(e.target.value)} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Moyens humains</label>
-        <textarea
-          className={textareaClassName}
-          value={moyensHumains}
-          onChange={(e) => setMoyensHumains(e.target.value)}
-        />
       </div>
 
       <div>

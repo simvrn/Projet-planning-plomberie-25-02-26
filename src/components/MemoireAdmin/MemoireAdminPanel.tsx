@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { getAdminConfig } from '../../lib/memoire/memoireApi';
 import { CORPS_DE_METIER } from '../../types/memoire';
-import type { CompanyConfig, CorpsDeMetier, ReferenceDoc } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc } from '../../types/memoire';
 import { CompanyInfoSection } from './CompanyInfoSection';
 import { SystemPromptSection } from './SystemPromptSection';
 import { StructurePromptSection } from './StructurePromptSection';
+import { MoyensHumainsSection } from './MoyensHumainsSection';
 import { ReferenceDocsSection } from './ReferenceDocsSection';
 
-type AdminSection = 'company' | 'prompt' | 'structure' | 'references';
+type AdminSection = 'company' | 'moyens-humains' | 'prompt' | 'structure' | 'references';
 
 interface MemoireAdminPanelProps {
   onLogout: () => void;
@@ -21,6 +22,9 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
   const [activeSection, setActiveSection] = useState<AdminSection>('company');
   const [config, setConfig] = useState<CompanyConfig | null>(null);
   const [referenceDocs, setReferenceDocs] = useState<ReferenceDoc[]>([]);
+  const [moyensHumainsParInterlocuteur, setMoyensHumainsParInterlocuteur] = useState<
+    Partial<Record<Interlocuteur, string>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +36,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
       const result = await getAdminConfig(adminPassword, corpsDeMetier);
       setConfig(result.config);
       setReferenceDocs(result.referenceDocs);
+      setMoyensHumainsParInterlocuteur(result.moyensHumainsParInterlocuteur);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -82,6 +87,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
             {(
               [
                 ['company', 'Infos entreprise'],
+                ['moyens-humains', 'Moyens humains'],
                 ['prompt', 'Prompt système'],
                 ['structure', 'Structure / mise en page'],
                 ['references', 'Mémoires de référence'],
@@ -116,6 +122,15 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
                   password={adminPassword}
                   corpsDeMetier={corpsDeMetier}
                   config={config}
+                  onSaved={refresh}
+                />
+              )}
+              {activeSection === 'moyens-humains' && (
+                <MoyensHumainsSection
+                  key={corpsDeMetier}
+                  password={adminPassword}
+                  corpsDeMetier={corpsDeMetier}
+                  moyensHumainsParInterlocuteur={moyensHumainsParInterlocuteur}
                   onSaved={refresh}
                 />
               )}

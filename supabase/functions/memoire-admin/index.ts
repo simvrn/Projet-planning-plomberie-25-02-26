@@ -26,6 +26,7 @@ const supabase = createClient(
 );
 
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
+const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -64,7 +65,7 @@ Deno.serve(async (req) => {
 
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, updated_at')
+          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, updated_at')
           .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
@@ -76,7 +77,17 @@ Deno.serve(async (req) => {
           .order('uploaded_at', { ascending: false });
         if (docsError) return json({ error: docsError.message }, 500);
 
-        return json({ config, referenceDocs });
+        const { data: moyensHumainsRows, error: moyensError } = await supabase
+          .from('memoire_moyens_humains')
+          .select('interlocuteur, contenu')
+          .eq('corps_de_metier', corpsDeMetier);
+        if (moyensError) return json({ error: moyensError.message }, 500);
+
+        const moyensHumainsParInterlocuteur = Object.fromEntries(
+          (moyensHumainsRows ?? []).map((row) => [row.interlocuteur, row.contenu])
+        );
+
+        return json({ config, referenceDocs, moyensHumainsParInterlocuteur });
       }
 
       case 'save-config': {
@@ -85,7 +96,6 @@ Deno.serve(async (req) => {
           systemPrompt,
           structurePrompt,
           presentation,
-          moyensHumains,
           moyensMateriels,
           organisationChantier,
           gestionAstreintes,
@@ -97,7 +107,6 @@ Deno.serve(async (req) => {
           systemPrompt?: string;
           structurePrompt?: string;
           presentation?: string;
-          moyensHumains?: string;
           moyensMateriels?: string;
           organisationChantier?: string;
           gestionAstreintes?: string;
@@ -115,7 +124,6 @@ Deno.serve(async (req) => {
             system_prompt: systemPrompt ?? '',
             structure_prompt: structurePrompt ?? '',
             presentation: presentation ?? '',
-            moyens_humains: moyensHumains ?? '',
             moyens_materiels: moyensMateriels ?? '',
             organisation_chantier: organisationChantier ?? '',
             gestion_astreintes: gestionAstreintes ?? '',
@@ -126,6 +134,35 @@ Deno.serve(async (req) => {
           })
           .eq('corps_de_metier', corpsDeMetier);
         if (updateError) return json({ error: updateError.message }, 500);
+
+        return json({ ok: true });
+      }
+
+      case 'save-moyens-humains': {
+        const { corpsDeMetier, interlocuteur, contenu } = body as {
+          corpsDeMetier?: string;
+          interlocuteur?: string;
+          contenu?: string;
+        };
+        if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+          return json({ error: 'corpsDeMetier invalide' }, 400);
+        }
+        if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+          return json({ error: 'interlocuteur invalide' }, 400);
+        }
+
+        const { error: upsertError } = await supabase
+          .from('memoire_moyens_humains')
+          .upsert(
+            {
+              corps_de_metier: corpsDeMetier,
+              interlocuteur,
+              contenu: contenu ?? '',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'corps_de_metier,interlocuteur' }
+          );
+        if (upsertError) return json({ error: upsertError.message }, 500);
 
         return json({ ok: true });
       }

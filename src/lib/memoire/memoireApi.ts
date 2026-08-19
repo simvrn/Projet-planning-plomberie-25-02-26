@@ -72,7 +72,11 @@ export async function verifyAdminPassword(password: string): Promise<void> {
 export async function getAdminConfig(
   password: string,
   corpsDeMetier: CorpsDeMetier
-): Promise<{ config: CompanyConfig; referenceDocs: ReferenceDoc[] }> {
+): Promise<{
+  config: CompanyConfig;
+  referenceDocs: ReferenceDoc[];
+  moyensHumainsParInterlocuteur: Partial<Record<Interlocuteur, string>>;
+}> {
   return callMemoireAdmin('get-config', password, { corpsDeMetier });
 }
 
@@ -83,7 +87,6 @@ export async function saveAdminConfig(
     systemPrompt: string;
     structurePrompt: string;
     presentation: string;
-    moyensHumains: string;
     moyensMateriels: string;
     organisationChantier: string;
     gestionAstreintes: string;
@@ -93,6 +96,15 @@ export async function saveAdminConfig(
   }
 ): Promise<void> {
   await callMemoireAdmin('save-config', password, { corpsDeMetier, ...fields });
+}
+
+export async function saveMoyensHumains(
+  password: string,
+  corpsDeMetier: CorpsDeMetier,
+  interlocuteur: Interlocuteur,
+  contenu: string
+): Promise<void> {
+  await callMemoireAdmin('save-moyens-humains', password, { corpsDeMetier, interlocuteur, contenu });
 }
 
 export async function uploadReferenceDoc(
