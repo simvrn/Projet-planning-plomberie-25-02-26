@@ -50,6 +50,7 @@ export interface CompanyConfig {
   gestion_milieu_occupe: string;
   methodes: string;
   certifications: string;
+  rse: string;
   updated_at: string;
 }
 

@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
   try {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications')
+      .select('system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, rse')
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
@@ -288,7 +288,10 @@ ${config.gestion_milieu_occupe || '(non renseigné)'}
 ${config.methodes || '(non renseigné)'}
 
 ## Certifications
-${config.certifications || '(non renseigné)'}`;
+${config.certifications || '(non renseigné)'}
+
+## RSE
+${config.rse || '(non renseigné)'}`;
 
     const referenceSection = referenceDocs.length
       ? referenceDocs

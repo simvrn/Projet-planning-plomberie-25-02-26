@@ -93,6 +93,7 @@ export async function saveAdminConfig(
     gestionMilieuOccupe: string;
     methodes: string;
     certifications: string;
+    rse: string;
   }
 ): Promise<void> {
   await callMemoireAdmin('save-config', password, { corpsDeMetier, ...fields });

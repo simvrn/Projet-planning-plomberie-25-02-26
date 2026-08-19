@@ -29,6 +29,7 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
         gestionMilieuOccupe: config.gestion_milieu_occupe,
         methodes: config.methodes,
         certifications: config.certifications,
+        rse: config.rse,
       });
       onSaved();
     } catch (err) {

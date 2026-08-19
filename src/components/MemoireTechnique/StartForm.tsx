@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { Input } from '../ui/Input';
 import { CORPS_DE_METIER, INTERLOCUTEURS, THEMATIQUES } from '../../types/memoire';
+import { PdfToTxtTool } from './PdfToTxtTool';
 
 export function StartForm() {
   const {
@@ -138,6 +139,8 @@ export function StartForm() {
           Continuer
         </Button>
       </div>
+
+      <PdfToTxtTool />
     </div>
   );
 }

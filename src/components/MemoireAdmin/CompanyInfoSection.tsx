@@ -21,6 +21,7 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
   const [gestionMilieuOccupe, setGestionMilieuOccupe] = useState(config.gestion_milieu_occupe);
   const [methodes, setMethodes] = useState(config.methodes);
   const [certifications, setCertifications] = useState(config.certifications);
+  const [rse, setRse] = useState(config.rse);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +39,7 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
         gestionMilieuOccupe,
         methodes,
         certifications,
+        rse,
       });
       onSaved();
     } catch (err) {
@@ -107,6 +109,11 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
           value={certifications}
           onChange={(e) => setCertifications(e.target.value)}
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">RSE</label>
+        <textarea className={textareaClassName} value={rse} onChange={(e) => setRse(e.target.value)} />
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

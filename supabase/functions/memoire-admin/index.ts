@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
 
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, updated_at')
+          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, rse, updated_at')
           .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
@@ -102,6 +102,7 @@ Deno.serve(async (req) => {
           gestionMilieuOccupe,
           methodes,
           certifications,
+          rse,
         } = body as {
           corpsDeMetier?: string;
           systemPrompt?: string;
@@ -113,6 +114,7 @@ Deno.serve(async (req) => {
           gestionMilieuOccupe?: string;
           methodes?: string;
           certifications?: string;
+          rse?: string;
         };
         if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
           return json({ error: 'corpsDeMetier invalide' }, 400);
@@ -130,6 +132,7 @@ Deno.serve(async (req) => {
             gestion_milieu_occupe: gestionMilieuOccupe ?? '',
             methodes: methodes ?? '',
             certifications: certifications ?? '',
+            rse: rse ?? '',
             updated_at: new Date().toISOString(),
           })
           .eq('corps_de_metier', corpsDeMetier);
