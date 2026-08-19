@@ -7,6 +7,7 @@ import { InterventionPanel } from './components/InterventionPanel/InterventionPa
 import { SettingsPanel } from './components/SettingsPanel/SettingsPanel';
 import { DayRecapPanel } from './components/DayRecapPanel/DayRecapPanel';
 import { MemoireTechnique } from './components/MemoireTechnique/MemoireTechnique';
+import { BuildInfo } from './components/BuildInfo';
 
 export default function App() {
   const currentTab = useStore((state) => state.currentTab);
@@ -32,6 +33,7 @@ export default function App() {
 
       <InterventionPanel />
       <DayRecapPanel />
+      <BuildInfo />
     </div>
   );
 }
