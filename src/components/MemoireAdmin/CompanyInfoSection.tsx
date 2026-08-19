@@ -17,6 +17,9 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
   const [presentation, setPresentation] = useState(config.presentation);
   const [moyensHumains, setMoyensHumains] = useState(config.moyens_humains);
   const [moyensMateriels, setMoyensMateriels] = useState(config.moyens_materiels);
+  const [organisationChantier, setOrganisationChantier] = useState(config.organisation_chantier);
+  const [gestionAstreintes, setGestionAstreintes] = useState(config.gestion_astreintes);
+  const [gestionMilieuOccupe, setGestionMilieuOccupe] = useState(config.gestion_milieu_occupe);
   const [methodes, setMethodes] = useState(config.methodes);
   const [certifications, setCertifications] = useState(config.certifications);
   const [saving, setSaving] = useState(false);
@@ -32,6 +35,9 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
         presentation,
         moyensHumains,
         moyensMateriels,
+        organisationChantier,
+        gestionAstreintes,
+        gestionMilieuOccupe,
         methodes,
         certifications,
       });
@@ -70,6 +76,33 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
           className={textareaClassName}
           value={moyensMateriels}
           onChange={(e) => setMoyensMateriels(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Organisation sur le chantier</label>
+        <textarea
+          className={textareaClassName}
+          value={organisationChantier}
+          onChange={(e) => setOrganisationChantier(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Gestion des astreintes</label>
+        <textarea
+          className={textareaClassName}
+          value={gestionAstreintes}
+          onChange={(e) => setGestionAstreintes(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Gestion en milieu occupé</label>
+        <textarea
+          className={textareaClassName}
+          value={gestionMilieuOccupe}
+          onChange={(e) => setGestionMilieuOccupe(e.target.value)}
         />
       </div>
 

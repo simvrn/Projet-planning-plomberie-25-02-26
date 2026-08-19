@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications, updated_at')
+          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, updated_at')
           .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
@@ -80,13 +80,28 @@ Deno.serve(async (req) => {
       }
 
       case 'save-config': {
-        const { corpsDeMetier, systemPrompt, structurePrompt, presentation, moyensHumains, moyensMateriels, methodes, certifications } = body as {
+        const {
+          corpsDeMetier,
+          systemPrompt,
+          structurePrompt,
+          presentation,
+          moyensHumains,
+          moyensMateriels,
+          organisationChantier,
+          gestionAstreintes,
+          gestionMilieuOccupe,
+          methodes,
+          certifications,
+        } = body as {
           corpsDeMetier?: string;
           systemPrompt?: string;
           structurePrompt?: string;
           presentation?: string;
           moyensHumains?: string;
           moyensMateriels?: string;
+          organisationChantier?: string;
+          gestionAstreintes?: string;
+          gestionMilieuOccupe?: string;
           methodes?: string;
           certifications?: string;
         };
@@ -102,6 +117,9 @@ Deno.serve(async (req) => {
             presentation: presentation ?? '',
             moyens_humains: moyensHumains ?? '',
             moyens_materiels: moyensMateriels ?? '',
+            organisation_chantier: organisationChantier ?? '',
+            gestion_astreintes: gestionAstreintes ?? '',
+            gestion_milieu_occupe: gestionMilieuOccupe ?? '',
             methodes: methodes ?? '',
             certifications: certifications ?? '',
             updated_at: new Date().toISOString(),

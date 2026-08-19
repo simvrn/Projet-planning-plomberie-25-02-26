@@ -16,6 +16,7 @@ interface MemoireAdminPanelProps {
 
 export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
   const adminPassword = useMemoireStore((s) => s.adminPassword);
+  const setView = useMemoireStore((s) => s.setView);
   const [corpsDeMetier, setCorpsDeMetier] = useState<CorpsDeMetier>(CORPS_DE_METIER[0]);
   const [activeSection, setActiveSection] = useState<AdminSection>('company');
   const [config, setConfig] = useState<CompanyConfig | null>(null);
@@ -47,23 +48,32 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Sélecteur de corps de métier : chaque métier a sa propre base entreprise */}
-      <div className="border-b border-gray-200 px-6 py-3 flex items-center gap-2 flex-shrink-0">
-        <span className="text-sm text-gray-500 mr-2">Corps de métier :</span>
-        <div className="flex items-center bg-gray-100 rounded-lg p-1">
-          {CORPS_DE_METIER.map((metier) => (
-            <button
-              key={metier}
-              onClick={() => setCorpsDeMetier(metier)}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                corpsDeMetier === metier
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {metier}
-            </button>
-          ))}
+      <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500 mr-2">Corps de métier :</span>
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            {CORPS_DE_METIER.map((metier) => (
+              <button
+                key={metier}
+                onClick={() => setCorpsDeMetier(metier)}
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                  corpsDeMetier === metier
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {metier}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <button
+          onClick={() => setView('wizard')}
+          className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+        >
+          ← Mémoire technique
+        </button>
       </div>
 
       <div className="flex-1 flex overflow-hidden">

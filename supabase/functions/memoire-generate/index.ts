@@ -45,13 +45,8 @@ const CLAUDE_MODEL = 'claude-sonnet-5';
 
 const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
-const VALID_THEMATIQUES = [
-  'Moyens humains',
-  'Moyens matériel',
-  'Organisation sur le chantier',
-  'Gestion des astreintes',
-  'Gestion en milieu occupé',
-];
+// Les thématiques ne sont plus restreintes à cette liste côté serveur : l'utilisateur peut
+// ajouter des thématiques libres non prévues (voir StartForm.tsx côté client).
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
@@ -214,8 +209,8 @@ Deno.serve(async (req) => {
   if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
     return json({ error: 'corpsDeMetier invalide' }, 400);
   }
-  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => VALID_THEMATIQUES.includes(t))) {
-    return json({ error: 'thematiques invalide : au moins une thématique valide requise' }, 400);
+  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
+    return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
   }
   if (!projectDocs || projectDocs.length === 0) {
     return json({ error: 'Au moins un document projet est requis' }, 400);
@@ -237,7 +232,7 @@ Deno.serve(async (req) => {
   try {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications')
+      .select('system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications')
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
@@ -266,6 +261,15 @@ ${config.moyens_humains || '(non renseigné)'}
 
 ## Moyens matériels
 ${config.moyens_materiels || '(non renseigné)'}
+
+## Organisation sur le chantier
+${config.organisation_chantier || '(non renseigné)'}
+
+## Gestion des astreintes
+${config.gestion_astreintes || '(non renseigné)'}
+
+## Gestion en milieu occupé
+${config.gestion_milieu_occupe || '(non renseigné)'}
 
 ## Méthodes
 ${config.methodes || '(non renseigné)'}

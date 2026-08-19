@@ -25,6 +25,9 @@ export function StructurePromptSection({ password, corpsDeMetier, config, onSave
         presentation: config.presentation,
         moyensHumains: config.moyens_humains,
         moyensMateriels: config.moyens_materiels,
+        organisationChantier: config.organisation_chantier,
+        gestionAstreintes: config.gestion_astreintes,
+        gestionMilieuOccupe: config.gestion_milieu_occupe,
         methodes: config.methodes,
         certifications: config.certifications,
       });

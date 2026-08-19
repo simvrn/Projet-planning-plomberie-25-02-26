@@ -1,11 +1,9 @@
+import { useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
+import { Input } from '../ui/Input';
 import { CORPS_DE_METIER, INTERLOCUTEURS, THEMATIQUES } from '../../types/memoire';
-import type { CorpsDeMetier } from '../../types/memoire';
-
-const selectClassName =
-  'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 
 export function StartForm() {
   const {
@@ -15,8 +13,18 @@ export function StartForm() {
     setInterlocuteur,
     setCorpsDeMetier,
     toggleThematique,
+    addCustomThematique,
+    removeCustomThematique,
     setStep,
   } = useMemoireStore();
+
+  const [customThematique, setCustomThematique] = useState('');
+  const customThematiques = thematiques.filter((t) => !THEMATIQUES.includes(t as (typeof THEMATIQUES)[number]));
+
+  function handleAddCustomThematique() {
+    addCustomThematique(customThematique);
+    setCustomThematique('');
+  }
 
   const canContinue = Boolean(interlocuteur && corpsDeMetier && thematiques.length > 0);
 
@@ -45,20 +53,17 @@ export function StartForm() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Corps de métier concerné</label>
-          <select
-            className={selectClassName}
-            value={corpsDeMetier ?? ''}
-            onChange={(e) => setCorpsDeMetier(e.target.value as CorpsDeMetier)}
-          >
-            <option value="" disabled>
-              Sélectionner...
-            </option>
+          <div className="flex flex-wrap gap-2">
             {CORPS_DE_METIER.map((metier) => (
-              <option key={metier} value={metier}>
+              <Chip
+                key={metier}
+                selected={corpsDeMetier === metier}
+                onClick={() => setCorpsDeMetier(metier)}
+              >
                 {metier}
-              </option>
+              </Chip>
             ))}
-          </select>
+          </div>
         </div>
 
         <div>
@@ -80,6 +85,33 @@ export function StartForm() {
                 {thematique}
               </label>
             ))}
+          </div>
+
+          {customThematiques.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {customThematiques.map((t) => (
+                <Chip key={t} selected onRemove={() => removeCustomThematique(t)}>
+                  {t}
+                </Chip>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-3">
+            <Input
+              placeholder="Autre thématique non prévue..."
+              value={customThematique}
+              onChange={(e) => setCustomThematique(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddCustomThematique();
+                }
+              }}
+            />
+            <Button type="button" variant="secondary" onClick={handleAddCustomThematique}>
+              Ajouter
+            </Button>
           </div>
         </div>
       </div>

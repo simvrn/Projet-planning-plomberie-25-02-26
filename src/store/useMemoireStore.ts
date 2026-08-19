@@ -19,7 +19,7 @@ interface MemoireStoreState {
   step: MemoireStep;
   interlocuteur: Interlocuteur | null;
   corpsDeMetier: CorpsDeMetier | null;
-  thematiques: Thematique[];
+  thematiques: string[];
   projectDocs: ProjectDocFile[];
 
   generationStatus: GenerationStatus;
@@ -34,6 +34,8 @@ interface MemoireStoreState {
   setInterlocuteur: (value: Interlocuteur) => void;
   setCorpsDeMetier: (value: CorpsDeMetier) => void;
   toggleThematique: (value: Thematique) => void;
+  addCustomThematique: (text: string) => void;
+  removeCustomThematique: (text: string) => void;
 
   addProjectDocs: (files: File[]) => string[];
   updateProjectDoc: (id: string, data: Partial<ProjectDocFile>) => void;
@@ -75,6 +77,16 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
         ? current.filter((t) => t !== value)
         : [...current, value],
     });
+  },
+  addCustomThematique: (text) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const current = get().thematiques;
+    if (current.includes(trimmed)) return;
+    set({ thematiques: [...current, trimmed] });
+  },
+  removeCustomThematique: (text) => {
+    set({ thematiques: get().thematiques.filter((t) => t !== text) });
   },
 
   addProjectDocs: (files) => {

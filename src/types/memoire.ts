@@ -46,6 +46,9 @@ export interface CompanyConfig {
   presentation: string;
   moyens_humains: string;
   moyens_materiels: string;
+  organisation_chantier: string;
+  gestion_astreintes: string;
+  gestion_milieu_occupe: string;
   methodes: string;
   certifications: string;
   updated_at: string;
