@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { extractTextFromFile } from '../../lib/memoire/textExtraction';
 import { uploadProjectDoc, generateMemoire } from '../../lib/memoire/memoireApi';
 import type { ProjectDocFile } from '../../types/memoire';
+import { PdfToTxtTool } from './PdfToTxtTool';
 
 const STATUS_LABEL: Record<ProjectDocFile['status'], string> = {
   extracting: 'Lecture du document...',
@@ -137,6 +138,8 @@ export function ProjectDocsUpload() {
           {generationStatus === 'generating' ? 'Génération en cours...' : 'Générer le mémoire'}
         </Button>
       </div>
+
+      <PdfToTxtTool />
     </div>
   );
 }
