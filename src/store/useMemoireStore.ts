@@ -20,6 +20,7 @@ interface MemoireStoreState {
   interlocuteur: Interlocuteur | null;
   corpsDeMetier: CorpsDeMetier | null;
   thematiques: string[];
+  nombrePersonnes: number | null;
   projectDocs: ProjectDocFile[];
 
   generationStatus: GenerationStatus;
@@ -36,6 +37,7 @@ interface MemoireStoreState {
   toggleThematique: (value: Thematique) => void;
   addCustomThematique: (text: string) => void;
   removeCustomThematique: (text: string) => void;
+  setNombrePersonnes: (value: number) => void;
 
   addProjectDocs: (files: File[]) => string[];
   updateProjectDoc: (id: string, data: Partial<ProjectDocFile>) => void;
@@ -57,6 +59,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   interlocuteur: null,
   corpsDeMetier: null,
   thematiques: [],
+  nombrePersonnes: null,
   projectDocs: [],
 
   generationStatus: 'idle',
@@ -88,6 +91,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   removeCustomThematique: (text) => {
     set({ thematiques: get().thematiques.filter((t) => t !== text) });
   },
+  setNombrePersonnes: (value) => set({ nombrePersonnes: value }),
 
   addProjectDocs: (files) => {
     const newDocs: ProjectDocFile[] = files.map((file) => ({
@@ -124,6 +128,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       interlocuteur: null,
       corpsDeMetier: null,
       thematiques: [],
+      nombrePersonnes: null,
       projectDocs: [],
       generationStatus: 'idle',
       downloadUrl: null,

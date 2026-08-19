@@ -10,11 +10,13 @@ export function StartForm() {
     interlocuteur,
     corpsDeMetier,
     thematiques,
+    nombrePersonnes,
     setInterlocuteur,
     setCorpsDeMetier,
     toggleThematique,
     addCustomThematique,
     removeCustomThematique,
+    setNombrePersonnes,
     setStep,
   } = useMemoireStore();
 
@@ -26,7 +28,9 @@ export function StartForm() {
     setCustomThematique('');
   }
 
-  const canContinue = Boolean(interlocuteur && corpsDeMetier && thematiques.length > 0);
+  const canContinue = Boolean(
+    interlocuteur && corpsDeMetier && nombrePersonnes && thematiques.length > 0
+  );
 
   return (
     <div className="max-w-lg mx-auto py-12">
@@ -61,6 +65,19 @@ export function StartForm() {
                 onClick={() => setCorpsDeMetier(metier)}
               >
                 {metier}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Nombre de personnes affectées au chantier
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <Chip key={n} selected={nombrePersonnes === n} onClick={() => setNombrePersonnes(n)}>
+                {n}
               </Chip>
             ))}
           </div>

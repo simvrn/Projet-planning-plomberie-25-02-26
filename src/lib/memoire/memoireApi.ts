@@ -119,6 +119,7 @@ export interface GenerateMemoirePayload {
   interlocuteur: Interlocuteur;
   corpsDeMetier: CorpsDeMetier;
   thematiques: string[];
+  nombrePersonnes: number;
   projectDocs: { name: string; storagePath: string; extractedText: string }[];
 }
 

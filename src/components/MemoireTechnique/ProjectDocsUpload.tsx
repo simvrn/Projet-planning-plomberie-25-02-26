@@ -17,6 +17,7 @@ export function ProjectDocsUpload() {
     interlocuteur,
     corpsDeMetier,
     thematiques,
+    nombrePersonnes,
     projectDocs,
     addProjectDocs,
     updateProjectDoc,
@@ -58,13 +59,14 @@ export function ProjectDocsUpload() {
   const allReady = projectDocs.length > 0 && projectDocs.every((d) => d.status === 'ready');
 
   async function handleGenerate() {
-    if (!interlocuteur || !corpsDeMetier) return;
+    if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
       const { downloadUrl } = await generateMemoire({
         interlocuteur,
         corpsDeMetier,
         thematiques,
+        nombrePersonnes,
         projectDocs: projectDocs.map((d) => ({
           name: d.name,
           storagePath: d.storagePath!,

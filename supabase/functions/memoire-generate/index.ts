@@ -193,6 +193,7 @@ Deno.serve(async (req) => {
     interlocuteur?: string;
     corpsDeMetier?: string;
     thematiques?: string[];
+    nombrePersonnes?: number;
     projectDocs?: ProjectDoc[];
   };
   try {
@@ -201,7 +202,7 @@ Deno.serve(async (req) => {
     return json({ error: 'Corps de requête JSON invalide' }, 400);
   }
 
-  const { interlocuteur, corpsDeMetier, thematiques, projectDocs } = body;
+  const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
 
   if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
     return json({ error: 'interlocuteur invalide' }, 400);
@@ -211,6 +212,9 @@ Deno.serve(async (req) => {
   }
   if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
     return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
+  }
+  if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
+    return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
   }
   if (!projectDocs || projectDocs.length === 0) {
     return json({ error: 'Au moins un document projet est requis' }, 400);
@@ -222,6 +226,7 @@ Deno.serve(async (req) => {
       interlocuteur,
       corps_de_metier: corpsDeMetier,
       thematiques,
+      nombre_personnes: nombrePersonnes,
       project_doc_names: projectDocs.map((d) => d.name),
       status: 'processing',
     })
@@ -296,6 +301,7 @@ ${config.certifications || '(non renseigné)'}`;
 
 Interlocuteur principal côté entreprise : ${interlocuteur}
 Corps de métier concerné : ${corpsDeMetier}
+Nombre de personnes affectées au chantier : ${nombrePersonnes}
 
 # Thématiques demandées par le CCTP
 Le mémoire doit traiter EXCLUSIVEMENT les thématiques suivantes (une section par thématique, pas de section hors de cette liste) :
