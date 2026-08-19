@@ -316,7 +316,7 @@ Génère maintenant le mémoire technique complet en appelant l'outil submit_mem
 
     const {
       data: { publicUrl },
-    } = supabase.storage.from('memoire_generated').getPublicUrl(fileName);
+    } = supabase.storage.from('memoire_generated').getPublicUrl(fileName, { download: fileName });
 
     await supabase
       .from('memoire_generations')

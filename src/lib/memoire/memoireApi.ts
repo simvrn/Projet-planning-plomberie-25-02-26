@@ -33,15 +33,33 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+/**
+ * Le client supabase-js ne remplit PAS `data` quand la fonction renvoie un statut non-2xx :
+ * le vrai corps de la réponse (avec notre message d'erreur) se trouve dans `error.context`
+ * (la Response brute), qu'il faut relire séparément.
+ */
+async function extractErrorMessage(error: { context?: unknown; message?: string } | null, data: unknown): Promise<string> {
+  const dataError = (data as { error?: string } | null)?.error;
+  if (dataError) return dataError;
+
+  if (error?.context instanceof Response) {
+    try {
+      const body = await error.context.clone().json();
+      if (body?.error) return body.error;
+    } catch {
+      // corps non-JSON ou déjà consommé : on retombe sur le message générique
+    }
+  }
+
+  return error?.message ?? 'Erreur inconnue';
+}
+
 async function callMemoireAdmin<T>(action: string, password: string, extra: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('memoire-admin', {
     body: { action, password, ...extra },
   });
 
-  if (error) {
-    const message = (data as { error?: string } | null)?.error ?? error.message;
-    throw new Error(message);
-  }
+  if (error) throw new Error(await extractErrorMessage(error, data));
   if (data?.error) throw new Error(data.error);
 
   return data as T;
@@ -102,10 +120,7 @@ export interface GenerateMemoirePayload {
 export async function generateMemoire(payload: GenerateMemoirePayload): Promise<{ downloadUrl: string }> {
   const { data, error } = await supabase.functions.invoke('memoire-generate', { body: payload });
 
-  if (error) {
-    const message = (data as { error?: string } | null)?.error ?? error.message;
-    throw new Error(message);
-  }
+  if (error) throw new Error(await extractErrorMessage(error, data));
   if (data?.error) throw new Error(data.error);
 
   return data as { downloadUrl: string };

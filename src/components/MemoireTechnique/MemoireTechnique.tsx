@@ -18,8 +18,7 @@ function ResultStep() {
       {downloadUrl && (
         <a
           href={downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          download={downloadUrl.split('/').pop() || 'Memoire_Technique.docx'}
           className="inline-flex items-center justify-center font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 px-6 py-3 text-base"
         >
           Télécharger le .docx
