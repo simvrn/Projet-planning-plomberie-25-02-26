@@ -2,7 +2,7 @@ import { supabase } from '../supabase';
 import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc, Thematique } from '../../types/memoire';
 
 /**
- * Upload un document projet (PDF ou Word) dans le bucket public "memoire_project_docs".
+ * Upload un document projet (PDF, Word ou texte) dans le bucket public "memoire_project_docs".
  * Même logique que uploadPdf() dans src/lib/supabase.ts (bucket dédié à cette fonctionnalité).
  */
 export async function uploadProjectDoc(file: File): Promise<{ storagePath: string; publicUrl: string }> {

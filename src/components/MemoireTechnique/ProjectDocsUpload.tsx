@@ -82,7 +82,7 @@ export function ProjectDocsUpload() {
     <div className="max-w-2xl mx-auto py-12">
       <h2 className="text-xl font-semibold text-gray-900 mb-1">Documents du projet</h2>
       <p className="text-sm text-gray-600 mb-6">
-        Uploade le CCTP, les plans, le cahier des charges... (PDF ou Word). L'IA s'appuiera dessus pour
+        Uploade le CCTP, les plans, le cahier des charges... (PDF, Word ou texte). L'IA s'appuiera dessus pour
         rédiger le mémoire.
       </p>
 
@@ -90,7 +90,7 @@ export function ProjectDocsUpload() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
         onChange={(e) => handleFilesSelected(e.target.files)}
         className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
       />

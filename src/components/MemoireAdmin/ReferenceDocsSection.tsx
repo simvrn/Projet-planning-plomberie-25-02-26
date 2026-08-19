@@ -54,7 +54,7 @@ export function ReferenceDocsSection({ password, corpsDeMetier, referenceDocs, o
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
         onChange={(e) => void handleFileSelected(e.target.files?.[0])}
         disabled={uploading}
         className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"

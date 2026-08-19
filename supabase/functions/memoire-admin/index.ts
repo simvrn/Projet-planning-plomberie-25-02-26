@@ -128,7 +128,9 @@ Deno.serve(async (req) => {
         const contentType =
           ext === 'pdf'
             ? 'application/pdf'
-            : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            : ext === 'txt'
+              ? 'text/plain'
+              : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
         const { error: uploadError } = await supabase.storage
           .from('memoire_reference_docs')

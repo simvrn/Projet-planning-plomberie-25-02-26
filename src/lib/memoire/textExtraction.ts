@@ -28,8 +28,8 @@ async function extractTextFromDocx(file: File): Promise<string> {
 }
 
 /**
- * Extrait le texte brut d'un fichier PDF ou Word (.docx), entièrement côté navigateur.
- * Lève une erreur explicite pour les formats non pris en charge (ex: .doc ancien format).
+ * Extrait le texte brut d'un fichier PDF, Word (.docx) ou texte brut (.txt), entièrement
+ * côté navigateur. Lève une erreur explicite pour les formats non pris en charge (ex: .doc ancien format).
  */
 export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase();
@@ -45,7 +45,11 @@ export async function extractTextFromFile(file: File): Promise<string> {
     return extractTextFromDocx(file);
   }
 
+  if (ext === 'txt' || file.type === 'text/plain') {
+    return file.text();
+  }
+
   throw new Error(
-    `Format de fichier non pris en charge : "${file.name}". Seuls les PDF et Word (.docx) sont acceptés.`
+    `Format de fichier non pris en charge : "${file.name}". Seuls les PDF, Word (.docx) et texte (.txt) sont acceptés.`
   );
 }
