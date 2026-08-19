@@ -5,9 +5,10 @@ import { CORPS_DE_METIER } from '../../types/memoire';
 import type { CompanyConfig, CorpsDeMetier, ReferenceDoc } from '../../types/memoire';
 import { CompanyInfoSection } from './CompanyInfoSection';
 import { SystemPromptSection } from './SystemPromptSection';
+import { StructurePromptSection } from './StructurePromptSection';
 import { ReferenceDocsSection } from './ReferenceDocsSection';
 
-type AdminSection = 'company' | 'prompt' | 'references';
+type AdminSection = 'company' | 'prompt' | 'structure' | 'references';
 
 interface MemoireAdminPanelProps {
   onLogout: () => void;
@@ -72,6 +73,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
               [
                 ['company', 'Infos entreprise'],
                 ['prompt', 'Prompt système'],
+                ['structure', 'Structure / mise en page'],
                 ['references', 'Mémoires de référence'],
               ] as [AdminSection, string][]
             ).map(([key, label]) => (
@@ -109,6 +111,15 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
               )}
               {activeSection === 'prompt' && (
                 <SystemPromptSection
+                  key={corpsDeMetier}
+                  password={adminPassword}
+                  corpsDeMetier={corpsDeMetier}
+                  config={config}
+                  onSaved={refresh}
+                />
+              )}
+              {activeSection === 'structure' && (
+                <StructurePromptSection
                   key={corpsDeMetier}
                   password={adminPassword}
                   corpsDeMetier={corpsDeMetier}

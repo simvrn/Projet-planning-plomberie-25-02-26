@@ -3,15 +3,15 @@ import { Button } from '../ui/Button';
 import { saveAdminConfig } from '../../lib/memoire/memoireApi';
 import type { CompanyConfig, CorpsDeMetier } from '../../types/memoire';
 
-interface SystemPromptSectionProps {
+interface StructurePromptSectionProps {
   password: string;
   corpsDeMetier: CorpsDeMetier;
   config: CompanyConfig;
   onSaved: () => void;
 }
 
-export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }: SystemPromptSectionProps) {
-  const [systemPrompt, setSystemPrompt] = useState(config.system_prompt);
+export function StructurePromptSection({ password, corpsDeMetier, config, onSaved }: StructurePromptSectionProps) {
+  const [structurePrompt, setStructurePrompt] = useState(config.structure_prompt);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,8 +20,8 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
     setError(null);
     try {
       await saveAdminConfig(password, corpsDeMetier, {
-        systemPrompt,
-        structurePrompt: config.structure_prompt,
+        systemPrompt: config.system_prompt,
+        structurePrompt,
         presentation: config.presentation,
         moyensHumains: config.moyens_humains,
         moyensMateriels: config.moyens_materiels,
@@ -38,16 +38,18 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Prompt système — {corpsDeMetier}</h3>
+      <h3 className="text-lg font-semibold text-gray-900">Structure / mise en page — {corpsDeMetier}</h3>
       <p className="text-sm text-gray-600">
-        Instructions données à l'IA pour rédiger les mémoires techniques de ce corps de métier (ton,
-        structure attendue, règles à respecter...). Laisser vide pour utiliser le prompt par défaut.
+        Décris l'ordre des sections et la mise en page attendue (ex: "1. Présentation de l'entreprise,
+        2. Moyens humains, 3. Moyens matériels, 4. Organisation de chantier...") pour que tous les
+        mémoires de ce corps de métier suivent la même structure. Laisser vide pour laisser l'IA
+        structurer librement.
       </p>
 
       <textarea
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[320px]"
-        value={systemPrompt}
-        onChange={(e) => setSystemPrompt(e.target.value)}
+        value={structurePrompt}
+        onChange={(e) => setStructurePrompt(e.target.value)}
       />
 
       {error && <p className="text-sm text-red-600">{error}</p>}

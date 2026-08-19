@@ -81,6 +81,7 @@ export async function saveAdminConfig(
   corpsDeMetier: CorpsDeMetier,
   fields: {
     systemPrompt: string;
+    structurePrompt: string;
     presentation: string;
     moyensHumains: string;
     moyensMateriels: string;

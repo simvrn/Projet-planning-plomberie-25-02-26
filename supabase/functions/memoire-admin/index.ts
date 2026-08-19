@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('corps_de_metier, system_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications, updated_at')
+          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications, updated_at')
           .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
@@ -80,9 +80,10 @@ Deno.serve(async (req) => {
       }
 
       case 'save-config': {
-        const { corpsDeMetier, systemPrompt, presentation, moyensHumains, moyensMateriels, methodes, certifications } = body as {
+        const { corpsDeMetier, systemPrompt, structurePrompt, presentation, moyensHumains, moyensMateriels, methodes, certifications } = body as {
           corpsDeMetier?: string;
           systemPrompt?: string;
+          structurePrompt?: string;
           presentation?: string;
           moyensHumains?: string;
           moyensMateriels?: string;
@@ -97,6 +98,7 @@ Deno.serve(async (req) => {
           .from('memoire_company_config')
           .update({
             system_prompt: systemPrompt ?? '',
+            structure_prompt: structurePrompt ?? '',
             presentation: presentation ?? '',
             moyens_humains: moyensHumains ?? '',
             moyens_materiels: moyensMateriels ?? '',

@@ -28,6 +28,7 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
     try {
       await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt: config.system_prompt,
+        structurePrompt: config.structure_prompt,
         presentation,
         moyensHumains,
         moyensMateriels,

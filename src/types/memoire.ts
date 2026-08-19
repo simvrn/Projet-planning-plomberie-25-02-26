@@ -42,6 +42,7 @@ export interface ReferenceDoc {
 export interface CompanyConfig {
   corps_de_metier: CorpsDeMetier;
   system_prompt: string;
+  structure_prompt: string;
   presentation: string;
   moyens_humains: string;
   moyens_materiels: string;

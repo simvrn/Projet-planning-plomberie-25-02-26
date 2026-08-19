@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
   try {
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications')
+      .select('system_prompt, structure_prompt, presentation, moyens_humains, moyens_materiels, methodes, certifications')
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
@@ -250,7 +250,11 @@ Deno.serve(async (req) => {
       .limit(3);
     if (refError) throw new Error(refError.message);
 
-    const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}
+    const structureSection = config.structure_prompt?.trim()
+      ? `\n\n# Structure et mise en page imposées\nRespecte STRICTEMENT la structure suivante pour tous les mémoires de ce corps de métier (ordre des sections, format des titres...) :\n${config.structure_prompt.trim()}`
+      : '';
+
+    const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
 
 # Informations sur l'entreprise
 
