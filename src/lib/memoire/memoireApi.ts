@@ -189,3 +189,14 @@ export async function generateMemoire(payload: GenerateMemoirePayload): Promise<
 
   return data as { downloadUrl: string };
 }
+
+export async function analysePreMemoire(preMemoireText: string): Promise<{ thematiques: string[] }> {
+  const { data, error } = await supabase.functions.invoke('memoire-analyse-thematiques', {
+    body: { preMemoireText },
+  });
+
+  if (error) throw new Error(await extractErrorMessage(error, data));
+  if (data?.error) throw new Error(data.error);
+
+  return data as { thematiques: string[] };
+}

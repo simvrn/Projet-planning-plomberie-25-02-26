@@ -11,8 +11,9 @@ import type {
 // Store dédié à la fonctionnalité "Mémoire technique", entièrement séparé du store du planning
 // (pas de persist partagé : aucun risque sur les données du planning déjà sauvegardées).
 
-export type MemoireStep = 'start' | 'upload' | 'result';
+export type MemoireStep = 'start' | 'premoire' | 'upload' | 'result';
 export type MemoireView = 'wizard' | 'admin';
+export type AnalysisStatus = 'idle' | 'analyzing' | 'done' | 'error';
 
 interface MemoireStoreState {
   view: MemoireView;
@@ -22,6 +23,11 @@ interface MemoireStoreState {
   thematiques: string[];
   nombrePersonnes: number | null;
   projectDocs: ProjectDocFile[];
+
+  preMemoireFileName: string | null;
+  preMemoireText: string | null;
+  analysisStatus: AnalysisStatus;
+  analysisError: string | null;
 
   generationStatus: GenerationStatus;
   downloadUrl: string | null;
@@ -38,6 +44,11 @@ interface MemoireStoreState {
   addCustomThematique: (text: string) => void;
   removeCustomThematique: (text: string) => void;
   setNombrePersonnes: (value: number) => void;
+
+  setPreMemoire: (fileName: string, text: string) => void;
+  startAnalysis: () => void;
+  setAnalysisSuggestions: (thematiques: string[]) => void;
+  setAnalysisError: (message: string) => void;
 
   addProjectDocs: (files: File[]) => string[];
   updateProjectDoc: (id: string, data: Partial<ProjectDocFile>) => void;
@@ -61,6 +72,11 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   thematiques: [],
   nombrePersonnes: null,
   projectDocs: [],
+
+  preMemoireFileName: null,
+  preMemoireText: null,
+  analysisStatus: 'idle',
+  analysisError: null,
 
   generationStatus: 'idle',
   downloadUrl: null,
@@ -92,6 +108,12 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
     set({ thematiques: get().thematiques.filter((t) => t !== text) });
   },
   setNombrePersonnes: (value) => set({ nombrePersonnes: value }),
+
+  setPreMemoire: (fileName, text) =>
+    set({ preMemoireFileName: fileName, preMemoireText: text, analysisStatus: 'idle', analysisError: null }),
+  startAnalysis: () => set({ analysisStatus: 'analyzing', analysisError: null }),
+  setAnalysisSuggestions: (thematiques) => set({ analysisStatus: 'done', thematiques }),
+  setAnalysisError: (message) => set({ analysisStatus: 'error', analysisError: message }),
 
   addProjectDocs: (files) => {
     const newDocs: ProjectDocFile[] = files.map((file) => ({
@@ -130,6 +152,10 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       thematiques: [],
       nombrePersonnes: null,
       projectDocs: [],
+      preMemoireFileName: null,
+      preMemoireText: null,
+      analysisStatus: 'idle',
+      analysisError: null,
       generationStatus: 'idle',
       downloadUrl: null,
       generationError: null,

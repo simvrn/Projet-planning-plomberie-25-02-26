@@ -128,7 +128,7 @@ export function ProjectDocsUpload() {
       )}
 
       <div className="mt-8 flex justify-between">
-        <Button variant="secondary" onClick={() => setStep('start')}>
+        <Button variant="secondary" onClick={() => setStep('premoire')}>
           Retour
         </Button>
         <Button
