@@ -557,30 +557,31 @@ async function runGeneration(
       ? `\n\n# Structure et mise en page imposées\nRespecte STRICTEMENT la structure suivante pour tous les mémoires de ce corps de métier (ordre des sections, format des titres...) :\n${config.structure_prompt.trim()}`
       : '';
 
+    // Ordre volontaire (demandé) : prompt système -> structure -> thématiques (les questions
+    // auxquelles répondre) -> infos entreprise -> moyens humains -> mémoires de référence ->
+    // documents projet. Les questions arrivent tôt pour que le modèle sache ce qu'on lui demande
+    // avant d'être noyé sous le contexte, plutôt que l'inverse.
+    const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
+
+${OUTPUT_FORMAT_INSTRUCTIONS}`;
+
     const configRecord = config as unknown as Record<string, string>;
 
     // On n'inclut que les rubriques réellement renseignées : afficher 15 blocs "(non renseigné)"
     // noie le prompt et pousse le modèle vers un mode "cocher les cases" plutôt qu'une rédaction
     // aussi riche que possible sur ce qui est effectivement fourni.
     const companyInfoBlocks: string[] = [];
-    if (moyensHumains.contenu?.trim()) {
-      companyInfoBlocks.push(`## Moyens humains (pour ${interlocuteur})\n${moyensHumains.contenu.trim()}`);
-    }
     for (const [col, label] of COMPANY_CONFIG_FIELDS) {
       const value = configRecord[col]?.trim();
       if (value) companyInfoBlocks.push(`## ${label}\n${value}`);
     }
-    const companyInfoSections = companyInfoBlocks.length
+    const companyInfoSection = companyInfoBlocks.length
       ? companyInfoBlocks.join('\n\n')
-      : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier — base-toi sur les documents projet et reste générique sur l'entreprise.)";
+      : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier.)";
 
-    const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
-
-${OUTPUT_FORMAT_INSTRUCTIONS}
-
-# Informations sur l'entreprise (uniquement ce qui a été renseigné)
-
-${companyInfoSections}`;
+    const moyensHumainsSection = moyensHumains.contenu?.trim()
+      ? moyensHumains.contenu.trim()
+      : `(Aucun moyen humain renseigné dans l'espace admin pour ${interlocuteur} / ${corpsDeMetier}.)`;
 
     const referenceSection = referenceDocs.length
       ? referenceDocs
@@ -603,9 +604,17 @@ Interlocuteur principal côté entreprise : ${interlocuteur}
 Corps de métier concerné : ${corpsDeMetier}
 Nombre de personnes affectées au chantier : ${nombrePersonnes}
 
-# Thématiques demandées par le CCTP
+# Thématiques demandées (les questions auxquelles ce mémoire doit répondre)
 Structure le corps du mémoire en une section principale par thématique ci-dessous — ne pars pas sur un tout autre sujet non listé, mais tu peux librement ajouter une introduction générale en début de document et une conclusion en fin si cela renforce le mémoire :
 ${thematiquesSection}
+
+# Informations sur l'entreprise (uniquement ce qui a été renseigné)
+
+${companyInfoSection}
+
+# Moyens humains (pour ${interlocuteur})
+
+${moyensHumainsSection}
 
 # Mémoires de référence de l'entreprise
 (À utiliser UNIQUEMENT pour le ton, le style et la structure — ne reprends jamais leur contenu spécifique à un autre projet.)
