@@ -78,7 +78,13 @@ const COMPANY_CONFIG_FIELDS: [string, string][] = [
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
 Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.
-Sois exhaustif et développé : chaque section doit être substantiellement traitée (plusieurs paragraphes et/ou plusieurs points détaillés), jamais réduite à une ou deux phrases génériques. Appuie-toi précisément sur le CCTP (cite les articles et exigences concernés, explique concrètement comment l'entreprise y répond) et sur l'intégralité des informations entreprise fournies pour chaque section. Un mémoire technique de qualité pour un appel d'offres compte généralement plusieurs pages par thématique traitée : vise l'exhaustivité et la précision, pas la concision. (Ceci concerne le fond, pas la forme — la mise en forme reste entièrement pilotée par la consigne de structure ci-dessous si elle est renseignée.)`;
+Sois exhaustif et développé : chaque section doit être substantiellement traitée (plusieurs paragraphes et/ou plusieurs points détaillés), jamais réduite à une ou deux phrases génériques. Appuie-toi précisément sur le CCTP (cite les articles et exigences concernés, explique concrètement comment l'entreprise y répond) et sur l'intégralité des informations entreprise fournies pour chaque section. Un mémoire technique de qualité pour un appel d'offres compte généralement plusieurs pages par thématique traitée : vise l'exhaustivité et la précision, pas la concision — rédige comme tu le ferais dans une conversation normale où on te demanderait ce document, sans te limiter.`;
+
+// Toujours ajoutée, même si l'admin a défini un prompt système personnalisé : c'est une exigence
+// technique du pipeline (le texte est ensuite parsé en Markdown pour générer le .docx), pas un
+// choix de style — sans ça le parseur ne peut pas reconstruire le document.
+const OUTPUT_FORMAT_INSTRUCTIONS = `# Format de réponse attendu
+Réponds directement en rédigeant le mémoire en Markdown, sans préambule ni commentaire hors document (pas de "Voici le mémoire..."). Utilise # pour le titre principal, ## pour chaque section/thématique, ### pour d'éventuelles sous-parties, des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, et **gras** pour les termes importants.`;
 
 interface ProjectDoc {
   name: string;
@@ -115,48 +121,64 @@ function slugify(text: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
-const memoireTool = {
-  name: 'submit_memoire',
-  description: 'Soumets le mémoire technique complet, structuré en titre + sections hiérarchisées.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      title: { type: 'string', description: 'Titre principal du mémoire technique' },
-      sections: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            heading: { type: 'string' },
-            level: { type: 'integer', enum: [1, 2, 3], description: '1 = titre de partie, 2 = sous-partie, 3 = sous-sous-partie' },
-            content: {
-              type: 'array',
-              description:
-                'Blocs de contenu de la section, DANS L\'ORDRE. Utilise "bullet" pour toute liste (matériel, étapes, points de contrôle...), "numbered" pour une procédure/séquence ordonnée, "paragraph" pour du texte courant. Structure comme un vrai document professionnel : alterne paragraphes d\'explication et listes, ne mets pas tout dans un seul gros paragraphe. Utilise **mot** pour mettre en gras les termes importants.',
-              items: {
-                type: 'object',
-                properties: {
-                  type: { type: 'string', enum: ['paragraph', 'bullet', 'numbered'] },
-                  text: { type: 'string' },
-                },
-                required: ['type', 'text'],
-              },
-            },
-          },
-          required: ['heading', 'level', 'content'],
-        },
-      },
-    },
-    required: ['title', 'sections'],
-  },
-};
-
 const MAX_OUTPUT_TOKENS = 120000;
 
 interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   maxTokens: number;
+}
+
+// Convertit la réponse Markdown libre de Claude (mode "rédaction normale", comme sur le
+// site — pas de schéma JSON forcé) en structure exploitable par buildDocx(). Un tool call forcé
+// pousse le modèle en mode "remplir un formulaire" et produit un texte bien plus court/pauvre
+// qu'une rédaction libre : on laisse donc Claude écrire librement, puis on parse.
+function parseMarkdownToMemoire(markdown: string): MemoireContent {
+  const lines = markdown.split('\n');
+  let title = 'Mémoire technique';
+  let titleFound = false;
+  const sections: MemoireSection[] = [];
+  let currentSection: MemoireSection | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const text = headingMatch[2].replace(/\*\*/g, '').trim();
+      if (!titleFound && level === 1) {
+        title = text;
+        titleFound = true;
+        continue;
+      }
+      currentSection = { heading: text, level: Math.min(level, 3), content: [] };
+      sections.push(currentSection);
+      continue;
+    }
+
+    if (!currentSection) {
+      currentSection = { heading: title, level: 1, content: [] };
+      sections.push(currentSection);
+    }
+
+    const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+    if (bulletMatch) {
+      currentSection.content.push({ type: 'bullet', text: bulletMatch[1].trim() });
+      continue;
+    }
+
+    const numberedMatch = line.match(/^\d+[.)]\s+(.*)$/);
+    if (numberedMatch) {
+      currentSection.content.push({ type: 'numbered', text: numberedMatch[1].trim() });
+      continue;
+    }
+
+    currentSection.content.push({ type: 'paragraph', text: line });
+  }
+
+  return { title, sections };
 }
 
 async function callClaude(
@@ -175,8 +197,6 @@ async function callClaude(
       max_tokens: MAX_OUTPUT_TOKENS,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-      tools: [memoireTool],
-      tool_choice: { type: 'tool', name: 'submit_memoire' },
     }),
   });
 
@@ -193,14 +213,12 @@ async function callClaude(
     );
   }
 
-  const toolUse = data.content?.find((block: { type: string }) => block.type === 'tool_use');
-  if (!toolUse) throw new Error('Claude n’a pas retourné de contenu structuré (submit_memoire manquant)');
+  const textBlock = data.content?.find((block: { type: string }) => block.type === 'text');
+  if (!textBlock?.text) throw new Error('Claude n’a pas retourné de texte');
 
-  const parsed = toolUse.input as MemoireContent;
-  if (!Array.isArray(parsed.sections) || parsed.sections.some((s) => !Array.isArray(s.content))) {
-    throw new Error(
-      'Claude a retourné une structure incomplète pour au moins une section. Réessaie, ou réduis le nombre de thématiques sélectionnées.'
-    );
+  const parsed = parseMarkdownToMemoire(textBlock.text);
+  if (parsed.sections.length === 0) {
+    throw new Error('Claude n’a pas retourné de contenu structuré exploitable (aucune section détectée)');
   }
 
   const usage: TokenUsage = {
@@ -386,6 +404,8 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
 
+${OUTPUT_FORMAT_INSTRUCTIONS}
+
 # Informations sur l'entreprise
 
 ${companyInfoSections}`;
@@ -425,7 +445,7 @@ ${referenceSection}
 
 ${projectDocsSection}
 
-Génère maintenant le mémoire technique complet en appelant l'outil submit_memoire. Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases.`;
+Rédige maintenant le mémoire technique complet, directement en Markdown (voir le format attendu dans les instructions système). Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases.`;
 
     const { content, usage } = await callClaude(systemPrompt, userPrompt);
     const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
