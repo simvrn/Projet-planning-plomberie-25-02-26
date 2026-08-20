@@ -224,24 +224,42 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
   return { title, sections };
 }
 
+const CLAUDE_CALL_TIMEOUT_MS = 9 * 60 * 1000; // 9 minutes — au-delà, on considère l'appel bloqué.
+
 async function callClaude(
   systemPrompt: string,
   userPrompt: string
 ): Promise<{ content: MemoireContent; usage: TokenUsage }> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CLAUDE_CALL_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(
+        `L'appel à Claude n'a pas répondu dans les ${CLAUDE_CALL_TIMEOUT_MS / 60000} minutes (connexion probablement bloquée). Réessaie.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errText = await response.text();
