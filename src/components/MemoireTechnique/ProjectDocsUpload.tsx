@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { extractTextFromFile } from '../../lib/memoire/textExtraction';
-import { uploadProjectDoc, generateMemoire } from '../../lib/memoire/memoireApi';
+import { uploadProjectDoc, generateMemoire, pollGenerationStatus } from '../../lib/memoire/memoireApi';
 import type { ProjectDocFile } from '../../types/memoire';
 import { PdfToTxtTool } from './PdfToTxtTool';
 
@@ -80,7 +80,7 @@ export function ProjectDocsUpload() {
     if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
-      const { downloadUrl, usage } = await generateMemoire({
+      const { generationId } = await generateMemoire({
         interlocuteur,
         corpsDeMetier,
         thematiques,
@@ -91,6 +91,7 @@ export function ProjectDocsUpload() {
           extractedText: d.extractedText!,
         })),
       });
+      const { downloadUrl, usage } = await pollGenerationStatus(generationId);
       setGenerationSuccess(downloadUrl, usage);
       setStep('result');
     } catch (err) {

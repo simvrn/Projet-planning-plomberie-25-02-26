@@ -310,55 +310,19 @@ async function buildDocx(
   return new Uint8Array(buffer);
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
-
-  let body: {
-    interlocuteur?: string;
-    corpsDeMetier?: string;
-    thematiques?: string[];
-    nombrePersonnes?: number;
-    projectDocs?: ProjectDoc[];
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: 'Corps de requête JSON invalide' }, 400);
-  }
-
-  const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
-
-  if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
-    return json({ error: 'interlocuteur invalide' }, 400);
-  }
-  if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
-    return json({ error: 'corpsDeMetier invalide' }, 400);
-  }
-  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
-    return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
-  }
-  if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
-    return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
-  }
-  if (!projectDocs || projectDocs.length === 0) {
-    return json({ error: 'Au moins un document projet est requis' }, 400);
-  }
-
-  const { data: generation, error: insertGenError } = await supabase
-    .from('memoire_generations')
-    .insert({
-      interlocuteur,
-      corps_de_metier: corpsDeMetier,
-      thematiques,
-      nombre_personnes: nombrePersonnes,
-      project_doc_names: projectDocs.map((d) => d.name),
-      status: 'processing',
-    })
-    .select()
-    .single();
-  if (insertGenError) return json({ error: insertGenError.message }, 500);
-
+// Fait tout le travail long (config, appel Claude, docx, upload) et met à jour la ligne
+// memoire_generations en 'done'/'error' à la fin. Appelée en arrière-plan via
+// EdgeRuntime.waitUntil() : la requête HTTP initiale répond en quelques centaines de ms
+// (juste l'insertion de la ligne), donc plus aucun risque de dépasser la limite de temps
+// d'exécution d'une requête Edge Function — seule la tâche de fond peut prendre plusieurs minutes.
+async function runGeneration(
+  generationId: string,
+  interlocuteur: string,
+  corpsDeMetier: string,
+  thematiques: string[],
+  nombrePersonnes: number,
+  projectDocs: ProjectDoc[]
+): Promise<void> {
   try {
     const configSelectColumns = [
       'system_prompt',
@@ -450,7 +414,7 @@ Rédige maintenant le mémoire technique complet, directement en Markdown (voir 
     const { content, usage } = await callClaude(systemPrompt, userPrompt);
     const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
 
-    const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generation.id}.docx`;
+    const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
     const { error: uploadError } = await supabase.storage
       .from('memoire_generated')
       .upload(fileName, docxBytes, {
@@ -458,10 +422,6 @@ Rédige maintenant le mémoire technique complet, directement en Markdown (voir 
         upsert: false,
       });
     if (uploadError) throw new Error(uploadError.message);
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from('memoire_generated').getPublicUrl(fileName, { download: fileName });
 
     await supabase
       .from('memoire_generations')
@@ -471,15 +431,109 @@ Rédige maintenant le mémoire technique complet, directement en Markdown (voir 
         input_tokens: usage.inputTokens,
         output_tokens: usage.outputTokens,
       })
-      .eq('id', generation.id);
-
-    return json({ ok: true, downloadUrl: publicUrl, generationId: generation.id, usage });
+      .eq('id', generationId);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     await supabase
       .from('memoire_generations')
       .update({ status: 'error', error_message: message })
-      .eq('id', generation.id);
-    return json({ error: message }, 500);
+      .eq('id', generationId);
   }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
+
+  let body: {
+    action?: string;
+    generationId?: string;
+    interlocuteur?: string;
+    corpsDeMetier?: string;
+    thematiques?: string[];
+    nombrePersonnes?: number;
+    projectDocs?: ProjectDoc[];
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: 'Corps de requête JSON invalide' }, 400);
+  }
+
+  if (body.action === 'status') {
+    const { generationId } = body;
+    if (!generationId) return json({ error: 'generationId requis' }, 400);
+
+    const { data, error } = await supabase
+      .from('memoire_generations')
+      .select('status, generated_docx_path, error_message, input_tokens, output_tokens')
+      .eq('id', generationId)
+      .single();
+    if (error) return json({ error: error.message }, 500);
+
+    if (data.status === 'done' && data.generated_docx_path) {
+      const {
+        data: { publicUrl },
+      } = supabase.storage
+        .from('memoire_generated')
+        .getPublicUrl(data.generated_docx_path, { download: data.generated_docx_path });
+      return json({
+        status: 'done',
+        downloadUrl: publicUrl,
+        usage: {
+          inputTokens: data.input_tokens ?? 0,
+          outputTokens: data.output_tokens ?? 0,
+          maxTokens: MAX_OUTPUT_TOKENS,
+        },
+      });
+    }
+    if (data.status === 'error') return json({ status: 'error', error: data.error_message });
+    return json({ status: data.status });
+  }
+
+  const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
+
+  if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+    return json({ error: 'interlocuteur invalide' }, 400);
+  }
+  if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+    return json({ error: 'corpsDeMetier invalide' }, 400);
+  }
+  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
+    return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
+  }
+  if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
+    return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
+  }
+  if (!projectDocs || projectDocs.length === 0) {
+    return json({ error: 'Au moins un document projet est requis' }, 400);
+  }
+
+  const { data: generation, error: insertGenError } = await supabase
+    .from('memoire_generations')
+    .insert({
+      interlocuteur,
+      corps_de_metier: corpsDeMetier,
+      thematiques,
+      nombre_personnes: nombrePersonnes,
+      project_doc_names: projectDocs.map((d) => d.name),
+      status: 'processing',
+    })
+    .select()
+    .single();
+  if (insertGenError) return json({ error: insertGenError.message }, 500);
+
+  const backgroundTask = runGeneration(
+    generation.id,
+    interlocuteur,
+    corpsDeMetier,
+    thematiques,
+    nombrePersonnes,
+    projectDocs
+  );
+
+  // @ts-expect-error EdgeRuntime est fourni par le runtime Supabase, pas typé par npm:docx/supabase-js
+  EdgeRuntime.waitUntil(backgroundTask);
+
+  return json({ ok: true, generationId: generation.id });
 });

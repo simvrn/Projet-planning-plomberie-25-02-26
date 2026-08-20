@@ -39,15 +39,23 @@ async function fileToBase64(file: File): Promise<string> {
  * (la Response brute), qu'il faut relire séparément.
  */
 async function extractErrorMessage(error: { context?: unknown; message?: string } | null, data: unknown): Promise<string> {
-  const dataError = (data as { error?: string } | null)?.error;
-  if (dataError) return dataError;
+  const dataObj = data as { error?: string; message?: string } | null;
+  if (dataObj?.error) return dataObj.error;
+  if (dataObj?.message) return dataObj.message;
 
   if (error?.context instanceof Response) {
     try {
       const body = await error.context.clone().json();
       if (body?.error) return body.error;
+      // Erreurs de plate-forme Supabase (ex: WORKER_RESOURCE_LIMIT) utilisent `.message`, pas `.error`.
+      if (body?.message) return body.message;
     } catch {
-      // corps non-JSON ou déjà consommé : on retombe sur le message générique
+      try {
+        const text = await error.context.clone().text();
+        if (text) return text.slice(0, 300);
+      } catch {
+        // corps déjà consommé/illisible : on retombe sur le message générique
+      }
     }
   }
 
@@ -187,15 +195,54 @@ export interface TokenUsage {
   maxTokens: number;
 }
 
-export async function generateMemoire(
-  payload: GenerateMemoirePayload
-): Promise<{ downloadUrl: string; usage: TokenUsage }> {
+/**
+ * Démarre la génération et retourne immédiatement (la fonction continue le travail en
+ * arrière-plan côté serveur) : il faut ensuite appeler pollGenerationStatus() jusqu'à
+ * ce qu'elle soit terminée, plutôt qu'attendre une seule longue réponse HTTP qui finirait
+ * par dépasser la limite de temps d'exécution d'une Edge Function.
+ */
+export async function generateMemoire(payload: GenerateMemoirePayload): Promise<{ generationId: string }> {
   const { data, error } = await supabase.functions.invoke('memoire-generate', { body: payload });
 
   if (error) throw new Error(await extractErrorMessage(error, data));
   if (data?.error) throw new Error(data.error);
 
-  return data as { downloadUrl: string; usage: TokenUsage };
+  return data as { generationId: string };
+}
+
+export type GenerationStatusResult =
+  | { status: 'processing' | 'pending' }
+  | { status: 'done'; downloadUrl: string; usage: TokenUsage }
+  | { status: 'error'; error: string };
+
+export async function checkGenerationStatus(generationId: string): Promise<GenerationStatusResult> {
+  const { data, error } = await supabase.functions.invoke('memoire-generate', {
+    body: { action: 'status', generationId },
+  });
+
+  if (error) throw new Error(await extractErrorMessage(error, data));
+  if (data?.error && !data?.status) throw new Error(data.error);
+
+  return data as GenerationStatusResult;
+}
+
+/**
+ * Interroge le statut toutes les `intervalMs` jusqu'à ce que la génération soit terminée
+ * (ou en erreur). `maxAttempts` évite une boucle infinie si quelque chose reste bloqué.
+ */
+export async function pollGenerationStatus(
+  generationId: string,
+  { intervalMs = 4000, maxAttempts = 200 }: { intervalMs?: number; maxAttempts?: number } = {}
+): Promise<{ downloadUrl: string; usage: TokenUsage }> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const result = await checkGenerationStatus(generationId);
+    if (result.status === 'done') return { downloadUrl: result.downloadUrl, usage: result.usage };
+    if (result.status === 'error') throw new Error(result.error);
+  }
+  throw new Error(
+    "La génération prend anormalement longtemps (plus de 13 minutes). Vérifie plus tard dans l'historique ou réessaie."
+  );
 }
 
 export async function analysePreMemoire(preMemoireText: string): Promise<{ thematiques: string[] }> {
