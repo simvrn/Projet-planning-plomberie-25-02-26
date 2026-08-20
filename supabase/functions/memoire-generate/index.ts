@@ -151,7 +151,18 @@ const memoireTool = {
   },
 };
 
-async function callClaude(systemPrompt: string, userPrompt: string): Promise<MemoireContent> {
+const MAX_OUTPUT_TOKENS = 120000;
+
+interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  maxTokens: number;
+}
+
+async function callClaude(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ content: MemoireContent; usage: TokenUsage }> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -161,7 +172,7 @@ async function callClaude(systemPrompt: string, userPrompt: string): Promise<Mem
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 120000,
+      max_tokens: MAX_OUTPUT_TOKENS,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [memoireTool],
@@ -192,7 +203,13 @@ async function callClaude(systemPrompt: string, userPrompt: string): Promise<Mem
     );
   }
 
-  return parsed;
+  const usage: TokenUsage = {
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+    maxTokens: MAX_OUTPUT_TOKENS,
+  };
+
+  return { content: parsed, usage };
 }
 
 function headingLevelFor(level: number) {
@@ -410,7 +427,7 @@ ${projectDocsSection}
 
 Génère maintenant le mémoire technique complet en appelant l'outil submit_memoire. Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases.`;
 
-    const content = await callClaude(systemPrompt, userPrompt);
+    const { content, usage } = await callClaude(systemPrompt, userPrompt);
     const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
 
     const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generation.id}.docx`;
@@ -428,10 +445,15 @@ Génère maintenant le mémoire technique complet en appelant l'outil submit_mem
 
     await supabase
       .from('memoire_generations')
-      .update({ status: 'done', generated_docx_path: fileName })
+      .update({
+        status: 'done',
+        generated_docx_path: fileName,
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens,
+      })
       .eq('id', generation.id);
 
-    return json({ ok: true, downloadUrl: publicUrl, generationId: generation.id });
+    return json({ ok: true, downloadUrl: publicUrl, generationId: generation.id, usage });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     await supabase

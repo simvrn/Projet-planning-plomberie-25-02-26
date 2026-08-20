@@ -6,7 +6,7 @@ import { ProjectDocsUpload } from './ProjectDocsUpload';
 import { MemoireAdminGate } from '../MemoireAdmin/MemoireAdminGate';
 
 function ResultStep() {
-  const { downloadUrl, resetWizard, setStep } = useMemoireStore();
+  const { downloadUrl, generationUsage, resetWizard, setStep } = useMemoireStore();
 
   return (
     <div className="max-w-lg mx-auto py-12 text-center">
@@ -15,6 +15,14 @@ function ResultStep() {
         Le document a été généré. Ouvre-le dans Word et mets à jour le sommaire (clic droit dessus →
         "Mettre à jour les champs").
       </p>
+
+      {generationUsage && (
+        <p className="text-xs text-gray-400 mb-4">
+          Tokens utilisés : {generationUsage.outputTokens.toLocaleString('fr-FR')} /{' '}
+          {generationUsage.maxTokens.toLocaleString('fr-FR')} max (sortie) — entrée :{' '}
+          {generationUsage.inputTokens.toLocaleString('fr-FR')}
+        </p>
+      )}
 
       {downloadUrl && (
         <a

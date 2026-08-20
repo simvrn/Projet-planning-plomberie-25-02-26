@@ -181,13 +181,21 @@ export interface GenerateMemoirePayload {
   projectDocs: { name: string; storagePath: string; extractedText: string }[];
 }
 
-export async function generateMemoire(payload: GenerateMemoirePayload): Promise<{ downloadUrl: string }> {
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  maxTokens: number;
+}
+
+export async function generateMemoire(
+  payload: GenerateMemoirePayload
+): Promise<{ downloadUrl: string; usage: TokenUsage }> {
   const { data, error } = await supabase.functions.invoke('memoire-generate', { body: payload });
 
   if (error) throw new Error(await extractErrorMessage(error, data));
   if (data?.error) throw new Error(data.error);
 
-  return data as { downloadUrl: string };
+  return data as { downloadUrl: string; usage: TokenUsage };
 }
 
 export async function analysePreMemoire(preMemoireText: string): Promise<{ thematiques: string[] }> {

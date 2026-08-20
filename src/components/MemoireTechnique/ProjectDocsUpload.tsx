@@ -80,7 +80,7 @@ export function ProjectDocsUpload() {
     if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
-      const { downloadUrl } = await generateMemoire({
+      const { downloadUrl, usage } = await generateMemoire({
         interlocuteur,
         corpsDeMetier,
         thematiques,
@@ -91,7 +91,7 @@ export function ProjectDocsUpload() {
           extractedText: d.extractedText!,
         })),
       });
-      setGenerationSuccess(downloadUrl);
+      setGenerationSuccess(downloadUrl, usage);
       setStep('result');
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'Erreur inconnue');

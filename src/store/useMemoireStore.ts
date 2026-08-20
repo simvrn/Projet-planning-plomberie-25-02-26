@@ -7,6 +7,7 @@ import type {
   ProjectDocFile,
   Thematique,
 } from '../types/memoire';
+import type { TokenUsage } from '../lib/memoire/memoireApi';
 
 // Store dédié à la fonctionnalité "Mémoire technique", entièrement séparé du store du planning
 // (pas de persist partagé : aucun risque sur les données du planning déjà sauvegardées).
@@ -32,6 +33,7 @@ interface MemoireStoreState {
   generationStatus: GenerationStatus;
   downloadUrl: string | null;
   generationError: string | null;
+  generationUsage: TokenUsage | null;
 
   adminUnlocked: boolean;
   adminPassword: string | null;
@@ -55,7 +57,7 @@ interface MemoireStoreState {
   removeProjectDoc: (id: string) => void;
 
   startGeneration: () => void;
-  setGenerationSuccess: (downloadUrl: string) => void;
+  setGenerationSuccess: (downloadUrl: string, usage: TokenUsage) => void;
   setGenerationError: (message: string) => void;
 
   unlockAdmin: (password: string) => void;
@@ -81,6 +83,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   generationStatus: 'idle',
   downloadUrl: null,
   generationError: null,
+  generationUsage: null,
 
   adminUnlocked: false,
   adminPassword: null,
@@ -137,8 +140,9 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
     set({ projectDocs: get().projectDocs.filter((doc) => doc.id !== id) });
   },
 
-  startGeneration: () => set({ generationStatus: 'generating', generationError: null, downloadUrl: null }),
-  setGenerationSuccess: (downloadUrl) => set({ generationStatus: 'done', downloadUrl }),
+  startGeneration: () =>
+    set({ generationStatus: 'generating', generationError: null, downloadUrl: null, generationUsage: null }),
+  setGenerationSuccess: (downloadUrl, usage) => set({ generationStatus: 'done', downloadUrl, generationUsage: usage }),
   setGenerationError: (message) => set({ generationStatus: 'error', generationError: message }),
 
   unlockAdmin: (password) => set({ adminUnlocked: true, adminPassword: password }),
@@ -159,5 +163,6 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       generationStatus: 'idle',
       downloadUrl: null,
       generationError: null,
+      generationUsage: null,
     }),
 }));
