@@ -222,23 +222,42 @@ export async function generateMemoireStepByStep(
 
   const total = payload.thematiques.length;
   let lastUsage = { totalInputTokens: 0, totalOutputTokens: 0 };
+  const MAX_ATTEMPTS_PER_SECTION = 3;
 
   for (let i = 0; i < total; i++) {
     const thematique = payload.thematiques[i];
-    const result = await callMemoireGenerate<{
+
+    // Un appel de section peut occasionnellement dépasser le timeout applicatif (variance
+    // normale de temps de réponse de Claude) : il échoue alors proprement (voir callClaude côté
+    // serveur) sans avoir rien écrit en base pour cette section, donc un nouvel essai est sûr.
+    let result: {
       ok: true;
       usage: { sectionInputTokens: number; sectionOutputTokens: number; totalInputTokens: number; totalOutputTokens: number };
-    }>({
-      action: 'generate-section',
-      generationId,
-      interlocuteur: payload.interlocuteur,
-      corpsDeMetier: payload.corpsDeMetier,
-      nombrePersonnes: payload.nombrePersonnes,
-      projectDocs: payload.projectDocs,
-      thematique,
-      sectionIndex: i,
-      totalSections: total,
-    });
+    } | null = null;
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_SECTION; attempt++) {
+      try {
+        result = await callMemoireGenerate<{
+          ok: true;
+          usage: { sectionInputTokens: number; sectionOutputTokens: number; totalInputTokens: number; totalOutputTokens: number };
+        }>({
+          action: 'generate-section',
+          generationId,
+          interlocuteur: payload.interlocuteur,
+          corpsDeMetier: payload.corpsDeMetier,
+          nombrePersonnes: payload.nombrePersonnes,
+          projectDocs: payload.projectDocs,
+          thematique,
+          sectionIndex: i,
+          totalSections: total,
+        });
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error('Erreur inconnue');
+      }
+    }
+    if (!result) throw lastError ?? new Error(`Échec de la section ${i + 1}/${total}`);
+
     lastUsage = { totalInputTokens: result.usage.totalInputTokens, totalOutputTokens: result.usage.totalOutputTokens };
     onProgress({ current: i + 1, total, thematique, usage: lastUsage });
   }

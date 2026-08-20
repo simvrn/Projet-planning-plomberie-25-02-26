@@ -335,7 +335,7 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
 // filet de sécurité pour qu'UN appel isolé échoue proprement plutôt que de bloquer indéfiniment —
 // il doit rester nettement inférieur à 150s pour laisser le temps de répondre avant que la
 // plateforme ne tue le worker de son côté.
-const CLAUDE_CALL_TIMEOUT_MS = 100 * 1000; // 100 secondes
+const CLAUDE_CALL_TIMEOUT_MS = 140 * 1000; // 140 secondes (marge de 10s sous le plafond Free de 150s)
 
 async function callClaude(
   systemPrompt: string,
@@ -1212,6 +1212,21 @@ Deno.serve(async (req) => {
         totalSections!
       );
       const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt, SECTION_MAX_OUTPUT_TOKENS);
+      if (content.sections.length === 0) throw new Error('Aucun contenu généré pour cette section.');
+
+      // Filet de sécurité constaté en test réel : Claude omet parfois le titre ## de section
+      // (notamment quand il "sur-interprète" le "section N/total" du prompt et numérote direct-
+      // ement ses sous-parties). On ne dépend donc jamais de Claude pour le titre du bandeau ni
+      // pour le badge "N points" : on les reconstruit nous-mêmes à partir de la thématique exacte
+      // fournie en entrée, qu'on connaît avec certitude.
+      const { heading: thematiqueHeading, points: thematiquePoints } = extractPoints(thematique.trim());
+      const sectionsFromThisCall: MemoireSection[] =
+        content.sections[0].level > 2
+          ? [{ heading: thematiqueHeading, level: 2, points: thematiquePoints, content: [] }, ...content.sections]
+          : [
+              { ...content.sections[0], points: content.sections[0].points ?? thematiquePoints },
+              ...content.sections.slice(1),
+            ];
 
       const { data: current, error: fetchError } = await supabase
         .from('memoire_generations')
@@ -1221,7 +1236,7 @@ Deno.serve(async (req) => {
       if (fetchError) throw new Error(fetchError.message);
 
       const existingSections = (Array.isArray(current.sections_json) ? current.sections_json : []) as MemoireSection[];
-      const newSections = [...existingSections, ...content.sections];
+      const newSections = [...existingSections, ...sectionsFromThisCall];
       const newMetadata: MemoireMetadata =
         sectionIndex === 0 ? { ...(current.metadata_json ?? {}), ...metadata } : current.metadata_json ?? {};
       const newInputTokens = (current.input_tokens ?? 0) + usage.inputTokens;
@@ -1248,8 +1263,10 @@ Deno.serve(async (req) => {
         },
       });
     } catch (err) {
+      // On NE marque PAS la ligne 'error' ici : une section qui échoue (ex. timeout ponctuel) ne
+      // doit pas invalider les sections déjà accumulées avec succès. Le client peut relancer
+      // uniquement cette section — la ligne reste 'processing' pour permettre la reprise.
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
-      await supabase.from('memoire_generations').update({ status: 'error', error_message: message }).eq('id', generationId);
       return json({ error: message }, 500);
     }
   }
