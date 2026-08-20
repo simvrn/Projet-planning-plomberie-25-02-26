@@ -847,15 +847,41 @@ function buildCoverPage(
   return children;
 }
 
+// Page listant les questions/thématiques exactes traitées dans le mémoire, juste après la page
+// de garde : permet de vérifier d'un coup d'œil qu'aucune question n'a été oubliée ou déformée,
+// avant même de lire le contenu rédigé.
+function buildQuestionsPage(thematiques: string[]): (InstanceType<typeof Paragraph>)[] {
+  const children: InstanceType<typeof Paragraph>[] = [
+    new Paragraph({ text: 'Questions traitées dans ce mémoire', heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({
+      text: "Rappel des thématiques de l'appel d'offres auxquelles ce mémoire répond, une section par question ci-après.",
+      spacing: { after: 200 },
+    }),
+  ];
+  for (const thematique of thematiques) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun(thematique)],
+        numbering: { reference: NUMBERED_LIST_REFERENCE, level: 0 },
+        spacing: { after: 100 },
+      })
+    );
+  }
+  children.push(new Paragraph({ children: [new PageBreak()] }));
+  return children;
+}
+
 async function buildDocx(
   content: MemoireContent,
   metadata: MemoireMetadata,
   interlocuteur: string,
-  corpsDeMetier: string
+  corpsDeMetier: string,
+  thematiques: string[]
 ): Promise<Uint8Array> {
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
 
   children.push(...buildCoverPage(content, metadata, interlocuteur, corpsDeMetier));
+  children.push(...buildQuestionsPage(thematiques));
 
   children.push(new Paragraph({ text: 'Sommaire', heading: HeadingLevel.HEADING_1 }));
   children.push(
@@ -1292,7 +1318,7 @@ Deno.serve(async (req) => {
     try {
       const { data: row, error: fetchError } = await supabase
         .from('memoire_generations')
-        .select('sections_json, metadata_json, input_tokens, output_tokens')
+        .select('sections_json, metadata_json, input_tokens, output_tokens, thematiques')
         .eq('id', generationId)
         .single();
       if (fetchError) throw new Error(fetchError.message);
@@ -1302,7 +1328,8 @@ Deno.serve(async (req) => {
 
       const content: MemoireContent = { title: 'Mémoire technique', sections };
       const metadata: MemoireMetadata = row.metadata_json ?? {};
-      const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier);
+      const thematiques = (Array.isArray(row.thematiques) ? row.thematiques : []) as string[];
+      const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier, thematiques);
 
       const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
       const { error: uploadError } = await supabase.storage
