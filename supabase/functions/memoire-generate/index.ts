@@ -16,11 +16,14 @@ import {
   Document,
   Packer,
   Paragraph,
+  TextRun,
   HeadingLevel,
   AlignmentType,
   PageBreak,
   TableOfContents,
 } from 'npm:docx@9';
+
+const NUMBERED_LIST_REFERENCE = 'memoire-numbered-list';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,7 +77,8 @@ const COMPANY_CONFIG_FIELDS: [string, string][] = [
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
-Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.`;
+Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.
+Structure chaque section comme un vrai document professionnel, pas comme un pavé de texte : alterne courts paragraphes d'explication et listes (à puces ou numérotées) pour le matériel, les étapes, les points de contrôle, les moyens humains, etc. Mets en gras (**terme**) les mots-clés et éléments importants. Une section entièrement rédigée en un seul bloc de texte est à éviter.`;
 
 interface ProjectDoc {
   name: string;
@@ -82,10 +86,15 @@ interface ProjectDoc {
   extractedText: string;
 }
 
+interface MemoireContentBlock {
+  type: 'paragraph' | 'bullet' | 'numbered';
+  text: string;
+}
+
 interface MemoireSection {
   heading: string;
   level: number;
-  paragraphs: string[];
+  content: MemoireContentBlock[];
 }
 
 interface MemoireContent {
@@ -120,9 +129,21 @@ const memoireTool = {
           properties: {
             heading: { type: 'string' },
             level: { type: 'integer', enum: [1, 2, 3], description: '1 = titre de partie, 2 = sous-partie, 3 = sous-sous-partie' },
-            paragraphs: { type: 'array', items: { type: 'string' } },
+            content: {
+              type: 'array',
+              description:
+                'Blocs de contenu de la section, DANS L\'ORDRE. Utilise "bullet" pour toute liste (matériel, étapes, points de contrôle...), "numbered" pour une procédure/séquence ordonnée, "paragraph" pour du texte courant. Structure comme un vrai document professionnel : alterne paragraphes d\'explication et listes, ne mets pas tout dans un seul gros paragraphe. Utilise **mot** pour mettre en gras les termes importants.',
+              items: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['paragraph', 'bullet', 'numbered'] },
+                  text: { type: 'string' },
+                },
+                required: ['type', 'text'],
+              },
+            },
           },
-          required: ['heading', 'level', 'paragraphs'],
+          required: ['heading', 'level', 'content'],
         },
       },
     },
@@ -166,6 +187,18 @@ function headingLevelFor(level: number) {
   return HeadingLevel.HEADING_3;
 }
 
+// Découpe "texte **important** suite" en TextRun normaux/gras, pour préserver la mise en
+// emphase que Claude produit naturellement (sinon tout ressort en texte plat, sans hiérarchie).
+function parseInlineRuns(text: string): InstanceType<typeof TextRun>[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+  if (parts.length === 0) return [new TextRun('')];
+  return parts.map((part) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? new TextRun({ text: part.slice(2, -2), bold: true })
+      : new TextRun(part)
+  );
+}
+
 async function buildDocx(
   content: MemoireContent,
   interlocuteur: string,
@@ -199,12 +232,31 @@ async function buildDocx(
 
   for (const section of content.sections) {
     children.push(new Paragraph({ text: section.heading, heading: headingLevelFor(section.level) }));
-    for (const paragraph of section.paragraphs) {
-      children.push(new Paragraph({ text: paragraph }));
+    for (const block of section.content) {
+      const runs = parseInlineRuns(block.text);
+      if (block.type === 'bullet') {
+        children.push(new Paragraph({ children: runs, bullet: { level: 0 } }));
+      } else if (block.type === 'numbered') {
+        children.push(
+          new Paragraph({ children: runs, numbering: { reference: NUMBERED_LIST_REFERENCE, level: 0 } })
+        );
+      } else {
+        children.push(new Paragraph({ children: runs }));
+      }
     }
   }
 
-  const doc = new Document({ sections: [{ children }] });
+  const doc = new Document({
+    numbering: {
+      config: [
+        {
+          reference: NUMBERED_LIST_REFERENCE,
+          levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.START }],
+        },
+      ],
+    },
+    sections: [{ children }],
+  });
   const buffer = await Packer.toBuffer(doc);
   return new Uint8Array(buffer);
 }
