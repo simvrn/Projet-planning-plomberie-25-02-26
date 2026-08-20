@@ -31,6 +31,7 @@ interface MemoireStoreState {
   analysisError: string | null;
 
   generationStatus: GenerationStatus;
+  generationProgress: { current: number; total: number; thematique: string } | null;
   downloadUrl: string | null;
   generationError: string | null;
   generationUsage: TokenUsage | null;
@@ -57,6 +58,7 @@ interface MemoireStoreState {
   removeProjectDoc: (id: string) => void;
 
   startGeneration: () => void;
+  setGenerationProgress: (progress: { current: number; total: number; thematique: string }) => void;
   setGenerationSuccess: (downloadUrl: string, usage: TokenUsage) => void;
   setGenerationError: (message: string) => void;
 
@@ -81,6 +83,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   analysisError: null,
 
   generationStatus: 'idle',
+  generationProgress: null,
   downloadUrl: null,
   generationError: null,
   generationUsage: null,
@@ -141,7 +144,14 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   },
 
   startGeneration: () =>
-    set({ generationStatus: 'generating', generationError: null, downloadUrl: null, generationUsage: null }),
+    set({
+      generationStatus: 'generating',
+      generationProgress: null,
+      generationError: null,
+      downloadUrl: null,
+      generationUsage: null,
+    }),
+  setGenerationProgress: (progress) => set({ generationProgress: progress }),
   setGenerationSuccess: (downloadUrl, usage) => set({ generationStatus: 'done', downloadUrl, generationUsage: usage }),
   setGenerationError: (message) => set({ generationStatus: 'error', generationError: message }),
 
@@ -161,6 +171,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       analysisStatus: 'idle',
       analysisError: null,
       generationStatus: 'idle',
+      generationProgress: null,
       downloadUrl: null,
       generationError: null,
       generationUsage: null,

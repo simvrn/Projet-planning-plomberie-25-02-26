@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { extractTextFromFile } from '../../lib/memoire/textExtraction';
-import { uploadProjectDoc, generateMemoire, pollGenerationStatus } from '../../lib/memoire/memoireApi';
+import { uploadProjectDoc, generateMemoireStepByStep } from '../../lib/memoire/memoireApi';
 import type { ProjectDocFile } from '../../types/memoire';
 import { PdfToTxtTool } from './PdfToTxtTool';
 
@@ -24,8 +24,10 @@ export function ProjectDocsUpload() {
     updateProjectDoc,
     removeProjectDoc,
     generationStatus,
+    generationProgress,
     generationError,
     startGeneration,
+    setGenerationProgress,
     setGenerationSuccess,
     setGenerationError,
     setStep,
@@ -80,18 +82,20 @@ export function ProjectDocsUpload() {
     if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
-      const { generationId } = await generateMemoire({
-        interlocuteur,
-        corpsDeMetier,
-        thematiques,
-        nombrePersonnes,
-        projectDocs: projectDocs.map((d) => ({
-          name: d.name,
-          storagePath: d.storagePath!,
-          extractedText: d.extractedText!,
-        })),
-      });
-      const { downloadUrl, usage } = await pollGenerationStatus(generationId);
+      const { downloadUrl, usage } = await generateMemoireStepByStep(
+        {
+          interlocuteur,
+          corpsDeMetier,
+          thematiques,
+          nombrePersonnes,
+          projectDocs: projectDocs.map((d) => ({
+            name: d.name,
+            storagePath: d.storagePath!,
+            extractedText: d.extractedText!,
+          })),
+        },
+        ({ current, total, thematique }) => setGenerationProgress({ current, total, thematique })
+      );
       setGenerationSuccess(downloadUrl, usage);
       setStep('result');
     } catch (err) {
@@ -147,8 +151,9 @@ export function ProjectDocsUpload() {
 
       {generationStatus === 'generating' && (
         <p className="mt-4 text-sm text-gray-500">
-          Génération en cours ({formatElapsed(elapsedSeconds)})... ça peut prendre plusieurs minutes,
-          surtout avec beaucoup de thématiques sélectionnées — c'est normal, laisse tourner.
+          {generationProgress
+            ? `Rédaction de la thématique ${generationProgress.current}/${generationProgress.total} : « ${generationProgress.thematique} » — (${formatElapsed(elapsedSeconds)})`
+            : `Préparation de la génération... (${formatElapsed(elapsedSeconds)})`}
         </p>
       )}
 

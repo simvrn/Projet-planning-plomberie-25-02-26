@@ -18,8 +18,7 @@ function ResultStep() {
 
       {generationUsage && (
         <p className="text-xs text-gray-400 mb-4">
-          Tokens utilisés : {generationUsage.outputTokens.toLocaleString('fr-FR')} /{' '}
-          {generationUsage.maxTokens.toLocaleString('fr-FR')} max (sortie) — entrée :{' '}
+          Tokens utilisés : {generationUsage.outputTokens.toLocaleString('fr-FR')} (sortie) — entrée :{' '}
           {generationUsage.inputTokens.toLocaleString('fr-FR')}
         </p>
       )}

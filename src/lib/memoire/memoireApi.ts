@@ -192,57 +192,65 @@ export interface GenerateMemoirePayload {
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
-  maxTokens: number;
 }
 
-/**
- * Démarre la génération et retourne immédiatement (la fonction continue le travail en
- * arrière-plan côté serveur) : il faut ensuite appeler pollGenerationStatus() jusqu'à
- * ce qu'elle soit terminée, plutôt qu'attendre une seule longue réponse HTTP qui finirait
- * par dépasser la limite de temps d'exécution d'une Edge Function.
- */
-export async function generateMemoire(payload: GenerateMemoirePayload): Promise<{ generationId: string }> {
-  const { data, error } = await supabase.functions.invoke('memoire-generate', { body: payload });
-
+async function callMemoireGenerate<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('memoire-generate', { body });
   if (error) throw new Error(await extractErrorMessage(error, data));
   if (data?.error) throw new Error(data.error);
-
-  return data as { generationId: string };
-}
-
-export type GenerationStatusResult =
-  | { status: 'processing' | 'pending' }
-  | { status: 'done'; downloadUrl: string; usage: TokenUsage }
-  | { status: 'error'; error: string };
-
-export async function checkGenerationStatus(generationId: string): Promise<GenerationStatusResult> {
-  const { data, error } = await supabase.functions.invoke('memoire-generate', {
-    body: { action: 'status', generationId },
-  });
-
-  if (error) throw new Error(await extractErrorMessage(error, data));
-  if (data?.error && !data?.status) throw new Error(data.error);
-
-  return data as GenerationStatusResult;
+  return data as T;
 }
 
 /**
- * Interroge le statut toutes les `intervalMs` jusqu'à ce que la génération soit terminée
- * (ou en erreur). `maxAttempts` évite une boucle infinie si quelque chose reste bloqué.
+ * Génère le mémoire thématique par thématique : un appel Claude court par section (bien sous la
+ * limite de durée d'exécution des Edge Functions Supabase, 150s/400s) plutôt qu'un seul très long
+ * appel qui finissait par se faire tuer silencieusement par la plateforme. `onProgress` est
+ * appelé après chaque section pour afficher une vraie progression côté UI.
  */
-export async function pollGenerationStatus(
-  generationId: string,
-  { intervalMs = 4000, maxAttempts = 200 }: { intervalMs?: number; maxAttempts?: number } = {}
+export async function generateMemoireStepByStep(
+  payload: GenerateMemoirePayload,
+  onProgress: (info: { current: number; total: number; thematique: string; usage: { totalInputTokens: number; totalOutputTokens: number } }) => void
 ): Promise<{ downloadUrl: string; usage: TokenUsage }> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    const result = await checkGenerationStatus(generationId);
-    if (result.status === 'done') return { downloadUrl: result.downloadUrl, usage: result.usage };
-    if (result.status === 'error') throw new Error(result.error);
+  const { generationId } = await callMemoireGenerate<{ generationId: string }>({
+    action: 'start',
+    interlocuteur: payload.interlocuteur,
+    corpsDeMetier: payload.corpsDeMetier,
+    thematiques: payload.thematiques,
+    nombrePersonnes: payload.nombrePersonnes,
+    projectDocs: payload.projectDocs,
+  });
+
+  const total = payload.thematiques.length;
+  let lastUsage = { totalInputTokens: 0, totalOutputTokens: 0 };
+
+  for (let i = 0; i < total; i++) {
+    const thematique = payload.thematiques[i];
+    const result = await callMemoireGenerate<{
+      ok: true;
+      usage: { sectionInputTokens: number; sectionOutputTokens: number; totalInputTokens: number; totalOutputTokens: number };
+    }>({
+      action: 'generate-section',
+      generationId,
+      interlocuteur: payload.interlocuteur,
+      corpsDeMetier: payload.corpsDeMetier,
+      nombrePersonnes: payload.nombrePersonnes,
+      projectDocs: payload.projectDocs,
+      thematique,
+      sectionIndex: i,
+      totalSections: total,
+    });
+    lastUsage = { totalInputTokens: result.usage.totalInputTokens, totalOutputTokens: result.usage.totalOutputTokens };
+    onProgress({ current: i + 1, total, thematique, usage: lastUsage });
   }
-  throw new Error(
-    "La génération prend anormalement longtemps (plus de 13 minutes). Vérifie plus tard dans l'historique ou réessaie."
-  );
+
+  const final = await callMemoireGenerate<{ ok: true; downloadUrl: string; usage: TokenUsage }>({
+    action: 'finalize',
+    generationId,
+    interlocuteur: payload.interlocuteur,
+    corpsDeMetier: payload.corpsDeMetier,
+  });
+
+  return { downloadUrl: final.downloadUrl, usage: final.usage };
 }
 
 export async function analysePreMemoire(preMemoireText: string): Promise<{ thematiques: string[] }> {

@@ -114,10 +114,15 @@ Sois exhaustif et développé : chaque section doit être substantiellement trai
 // Toujours ajoutée, même si l'admin a défini un prompt système personnalisé : c'est une exigence
 // technique du pipeline (le texte est ensuite parsé en Markdown pour générer le .docx), pas un
 // choix de style — sans ça le parseur ne peut pas reconstruire le document.
-const OUTPUT_FORMAT_INSTRUCTIONS = `# Format de réponse attendu
-Réponds directement en rédigeant le mémoire en Markdown, sans préambule ni commentaire hors document (pas de "Voici le mémoire...").
-
-Avant toute chose, commence ta réponse par un bloc de métadonnées entre triples backticks avec le mot "meta", pour les informations suivantes SI ET SEULEMENT SI elles sont explicitement indiquées dans les documents du projet fournis (CCTP, règlement de consultation, acte d'engagement...) — laisse la valeur vide après les deux-points si l'information n'apparaît pas, ne l'invente JAMAIS :
+//
+// Le mémoire est désormais généré thématique par thématique (un appel Claude par section, voir
+// action "generate-section" plus bas) pour rester sous la limite de durée des Edge Functions.
+// Chaque appel ne rédige donc QU'UNE section : le bloc meta (infos marché) n'est demandé qu'à la
+// toute première section, et aucun titre # de document n'est demandé nulle part (il n'y en a
+// qu'un seul pour tout le mémoire, pas un par section).
+function buildOutputFormatInstructions(includeMeta: boolean): string {
+  const metaBlock = includeMeta
+    ? `Avant toute chose, commence ta réponse par un bloc de métadonnées entre triples backticks avec le mot "meta", pour les informations suivantes SI ET SEULEMENT SI elles sont explicitement indiquées dans les documents du projet fournis (CCTP, règlement de consultation, acte d'engagement...) — laisse la valeur vide après les deux-points si l'information n'apparaît pas, ne l'invente JAMAIS :
 \`\`\`meta
 client: (nom du maître d'ouvrage / bailleur / donneur d'ordre)
 objet: (intitulé du marché ou de l'accord-cadre)
@@ -128,13 +133,21 @@ perimetre: (nombre de résidences/logements/sites ou périmètre géographique)
 duree: (durée du marché et modalités de reconduction)
 \`\`\`
 
-Puis structure le corps du document avec exactement 4 niveaux de titres Markdown, chacun ayant un rôle précis dans la mise en page finale :
-- # : le titre général du mémoire (une seule fois, juste après le bloc meta).
-- ## : chaque section principale, une par thématique demandée (elle sera mise en avant avec un bandeau numéroté). Si la thématique demandée précise un nombre de points (ex. "Méthodologie (20 points)"), reporte ce "(N points)" à la toute fin du titre ##.
-- ### : les sous-parties numérotées à l'intérieur d'une section (ex. présentation, données chiffrées, équipe dédiée...). C'est le niveau le plus utilisé pour découper le contenu.
+Puis rédige directement la section demandée (voir ci-dessous).`
+    : `Tu rédiges ici UNE SEULE section d'un mémoire déjà entamé (les autres sections sont rédigées séparément, dans d'autres appels) : ne remets ni bloc de métadonnées, ni titre général, ni introduction/conclusion globale au mémoire — uniquement le contenu de cette section précise.`;
+
+  return `# Format de réponse attendu
+Réponds directement en rédigeant en Markdown, sans préambule ni commentaire hors document (pas de "Voici la section...").
+
+${metaBlock}
+
+Structure ton texte avec exactement 3 niveaux de titres Markdown, chacun ayant un rôle précis dans la mise en page finale :
+- ## : le titre de la section (une seule fois, en tout début de ta réponse). Reporte le "(N points)" de la thématique s'il y en a un, à la toute fin du titre.
+- ### : les sous-parties numérotées à l'intérieur de la section (ex. présentation, données chiffrées, équipe dédiée...). C'est le niveau le plus utilisé pour découper le contenu.
 - #### : uniquement pour scinder occasionnellement une sous-partie ### en plusieurs blocs courts et bien distincts (ex. plusieurs domaines de compétences, plusieurs procédures) — reste exceptionnel, n'en abuse pas.
 
 Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.`;
+}
 
 interface ProjectDoc {
   name: string;
@@ -213,12 +226,13 @@ function slugify(text: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
-const MAX_OUTPUT_TOKENS = 120000;
+// Plafond de tokens par SECTION (une thématique), pas pour le document entier : voir le
+// commentaire au-dessus de CLAUDE_CALL_TIMEOUT_MS pour le pourquoi de la génération par étapes.
+const SECTION_MAX_OUTPUT_TOKENS = 30000;
 
 interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
-  maxTokens: number;
 }
 
 // Convertit la réponse Markdown libre de Claude (mode "rédaction normale", comme sur le
@@ -310,11 +324,23 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
   return { title, sections };
 }
 
-const CLAUDE_CALL_TIMEOUT_MS = 9 * 60 * 1000; // 9 minutes — au-delà, on considère l'appel bloqué.
+// Les Edge Functions Supabase ont une limite dure de temps d'exécution (150s en Free, 400s en
+// Pro) qui s'applique aussi aux tâches de fond (EdgeRuntime.waitUntil) : au-delà, la plateforme
+// tue l'isolat sans laisser la moindre chance à un try/catch de s'exécuter, donc une génération
+// trop longue reste bloquée pour toujours en "processing" sans qu'aucun timeout applicatif ne
+// puisse jamais se déclencher. Un test réel l'a confirmé (18 min puis 12 min de blocage silencieux
+// malgré un premier timeout applicatif à 9 minutes). La vraie solution : générer le mémoire
+// thématique par thématique (un appel Claude court par section, voir action "generate-section"),
+// chaque appel restant largement sous la limite. Le timeout ci-dessous n'est donc plus qu'un
+// filet de sécurité pour qu'UN appel isolé échoue proprement plutôt que de bloquer indéfiniment —
+// il doit rester nettement inférieur à 150s pour laisser le temps de répondre avant que la
+// plateforme ne tue le worker de son côté.
+const CLAUDE_CALL_TIMEOUT_MS = 100 * 1000; // 100 secondes
 
 async function callClaude(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  maxTokens: number
 ): Promise<{ content: MemoireContent; metadata: MemoireMetadata; usage: TokenUsage }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CLAUDE_CALL_TIMEOUT_MS);
@@ -330,7 +356,7 @@ async function callClaude(
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
@@ -339,7 +365,7 @@ async function callClaude(
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(
-        `L'appel à Claude n'a pas répondu dans les ${CLAUDE_CALL_TIMEOUT_MS / 60000} minutes (connexion probablement bloquée). Réessaie.`
+        `L'appel à Claude pour cette section n'a pas répondu dans les ${CLAUDE_CALL_TIMEOUT_MS / 1000} secondes. Réessaie (tu peux relancer uniquement cette section, le reste du mémoire déjà rédigé est conservé).`
       );
     }
     throw err;
@@ -356,7 +382,7 @@ async function callClaude(
 
   if (data.stop_reason === 'max_tokens') {
     throw new Error(
-      "La réponse a été coupée avant la fin (trop de contenu demandé d'un coup). Réduis le nombre de thématiques sélectionnées ou raccourcis les documents projet, puis réessaie."
+      "La réponse a été coupée avant la fin (section trop longue). Réessaie cette section, ou raccourcis les documents projet."
     );
   }
 
@@ -372,7 +398,6 @@ async function callClaude(
   const usage: TokenUsage = {
     inputTokens: data.usage?.input_tokens ?? 0,
     outputTokens: data.usage?.output_tokens ?? 0,
-    maxTokens: MAX_OUTPUT_TOKENS,
   };
 
   return { content: parsed, metadata, usage };
@@ -938,103 +963,103 @@ async function buildDocx(
   return new Uint8Array(buffer);
 }
 
-// Fait tout le travail long (config, appel Claude, docx, upload) et met à jour la ligne
-// memoire_generations en 'done'/'error' à la fin. Appelée en arrière-plan via
-// EdgeRuntime.waitUntil() : la requête HTTP initiale répond en quelques centaines de ms
-// (juste l'insertion de la ligne), donc plus aucun risque de dépasser la limite de temps
-// d'exécution d'une requête Edge Function — seule la tâche de fond peut prendre plusieurs minutes.
-async function runGeneration(
-  generationId: string,
+// Récupère tout le contexte entreprise nécessaire à la rédaction d'une section (config, moyens
+// humains, mémoires de référence). Refait à CHAQUE appel de section : ce sont de simples lectures
+// rapides, et chaque appel HTTP étant indépendant (voir plus haut pourquoi), rien n'est partagé
+// en mémoire d'un appel à l'autre.
+async function gatherContext(corpsDeMetier: string, interlocuteur: string) {
+  const configSelectColumns = [
+    'system_prompt',
+    'structure_prompt',
+    ...COMPANY_CONFIG_FIELDS.map(([col]) => col),
+  ].join(', ');
+
+  const { data: config, error: configError } = await supabase
+    .from('memoire_company_config')
+    .select(configSelectColumns)
+    .eq('corps_de_metier', corpsDeMetier)
+    .single();
+  if (configError) throw new Error(configError.message);
+
+  const { data: moyensHumains, error: moyensError } = await supabase
+    .from('memoire_moyens_humains')
+    .select('contenu')
+    .eq('corps_de_metier', corpsDeMetier)
+    .eq('interlocuteur', interlocuteur)
+    .single();
+  if (moyensError) throw new Error(moyensError.message);
+
+  const { data: referenceDocs, error: refError } = await supabase
+    .from('memoire_reference_docs')
+    .select('file_name, corps_de_metier, extracted_text')
+    .eq('corps_de_metier', corpsDeMetier)
+    .order('uploaded_at', { ascending: false })
+    .limit(3);
+  if (refError) throw new Error(refError.message);
+
+  return { config, moyensHumains, referenceDocs };
+}
+
+// Construit les prompts pour UNE section (une thématique). includeMeta (via sectionIndex === 0)
+// ne demande le bloc de métadonnées qu'une seule fois, sur la toute première section.
+function buildSectionPrompts(
+  context: Awaited<ReturnType<typeof gatherContext>>,
   interlocuteur: string,
   corpsDeMetier: string,
-  thematiques: string[],
   nombrePersonnes: number,
-  projectDocs: ProjectDoc[]
-): Promise<void> {
-  try {
-    const configSelectColumns = [
-      'system_prompt',
-      'structure_prompt',
-      ...COMPANY_CONFIG_FIELDS.map(([col]) => col),
-    ].join(', ');
+  projectDocs: ProjectDoc[],
+  thematique: string,
+  sectionIndex: number,
+  totalSections: number
+): { systemPrompt: string; userPrompt: string } {
+  const { config, moyensHumains, referenceDocs } = context;
 
-    const { data: config, error: configError } = await supabase
-      .from('memoire_company_config')
-      .select(configSelectColumns)
-      .eq('corps_de_metier', corpsDeMetier)
-      .single();
-    if (configError) throw new Error(configError.message);
+  const structureSection = config.structure_prompt?.trim()
+    ? `\n\n# Structure et mise en page imposées\nRespecte STRICTEMENT la structure suivante pour tous les mémoires de ce corps de métier (ordre des sections, format des titres...) :\n${config.structure_prompt.trim()}`
+    : '';
 
-    const { data: moyensHumains, error: moyensError } = await supabase
-      .from('memoire_moyens_humains')
-      .select('contenu')
-      .eq('corps_de_metier', corpsDeMetier)
-      .eq('interlocuteur', interlocuteur)
-      .single();
-    if (moyensError) throw new Error(moyensError.message);
+  // Ordre volontaire (demandé) : prompt système -> structure -> thématique -> infos entreprise ->
+  // moyens humains -> mémoires de référence -> documents projet.
+  const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
 
-    const { data: referenceDocs, error: refError } = await supabase
-      .from('memoire_reference_docs')
-      .select('file_name, corps_de_metier, extracted_text')
-      .eq('corps_de_metier', corpsDeMetier)
-      .order('uploaded_at', { ascending: false })
-      .limit(3);
-    if (refError) throw new Error(refError.message);
+${buildOutputFormatInstructions(sectionIndex === 0)}`;
 
-    const structureSection = config.structure_prompt?.trim()
-      ? `\n\n# Structure et mise en page imposées\nRespecte STRICTEMENT la structure suivante pour tous les mémoires de ce corps de métier (ordre des sections, format des titres...) :\n${config.structure_prompt.trim()}`
-      : '';
+  const configRecord = config as unknown as Record<string, string>;
 
-    // Ordre volontaire (demandé) : prompt système -> structure -> thématiques (les questions
-    // auxquelles répondre) -> infos entreprise -> moyens humains -> mémoires de référence ->
-    // documents projet. Les questions arrivent tôt pour que le modèle sache ce qu'on lui demande
-    // avant d'être noyé sous le contexte, plutôt que l'inverse.
-    const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
+  // On n'inclut que les rubriques réellement renseignées : afficher 15 blocs "(non renseigné)"
+  // noie le prompt et pousse le modèle vers un mode "cocher les cases" plutôt qu'une rédaction
+  // aussi riche que possible sur ce qui est effectivement fourni.
+  const companyInfoBlocks: string[] = [];
+  for (const [col, label] of COMPANY_CONFIG_FIELDS) {
+    const value = configRecord[col]?.trim();
+    if (value) companyInfoBlocks.push(`## ${label}\n${value}`);
+  }
+  const companyInfoSection = companyInfoBlocks.length
+    ? companyInfoBlocks.join('\n\n')
+    : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier.)";
 
-${OUTPUT_FORMAT_INSTRUCTIONS}`;
+  const moyensHumainsSection = moyensHumains.contenu?.trim()
+    ? moyensHumains.contenu.trim()
+    : `(Aucun moyen humain renseigné dans l'espace admin pour ${interlocuteur} / ${corpsDeMetier}.)`;
 
-    const configRecord = config as unknown as Record<string, string>;
+  const referenceSection = referenceDocs.length
+    ? referenceDocs
+        .map((d, i) => `### Exemple de référence ${i + 1} (${d.file_name})\n${truncate(d.extracted_text, 6000)}`)
+        .join('\n\n')
+    : 'Aucun mémoire de référence disponible.';
 
-    // On n'inclut que les rubriques réellement renseignées : afficher 15 blocs "(non renseigné)"
-    // noie le prompt et pousse le modèle vers un mode "cocher les cases" plutôt qu'une rédaction
-    // aussi riche que possible sur ce qui est effectivement fourni.
-    const companyInfoBlocks: string[] = [];
-    for (const [col, label] of COMPANY_CONFIG_FIELDS) {
-      const value = configRecord[col]?.trim();
-      if (value) companyInfoBlocks.push(`## ${label}\n${value}`);
-    }
-    const companyInfoSection = companyInfoBlocks.length
-      ? companyInfoBlocks.join('\n\n')
-      : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier.)";
+  const projectDocsSection = projectDocs
+    .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 400000)}`)
+    .join('\n\n---\n\n');
 
-    const moyensHumainsSection = moyensHumains.contenu?.trim()
-      ? moyensHumains.contenu.trim()
-      : `(Aucun moyen humain renseigné dans l'espace admin pour ${interlocuteur} / ${corpsDeMetier}.)`;
-
-    const referenceSection = referenceDocs.length
-      ? referenceDocs
-          .map(
-            (d, i) =>
-              `### Exemple de référence ${i + 1} (${d.file_name})\n${truncate(d.extracted_text, 6000)}`
-          )
-          .join('\n\n')
-      : 'Aucun mémoire de référence disponible.';
-
-    const projectDocsSection = projectDocs
-      .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 400000)}`)
-      .join('\n\n---\n\n');
-
-    const thematiquesSection = thematiques.map((t) => `- ${t}`).join('\n');
-
-    const userPrompt = `Rédige un mémoire technique pour répondre à un appel d'offres.
+  const userPrompt = `Rédige UNE SEULE section (section ${sectionIndex + 1}/${totalSections}) d'un mémoire technique pour répondre à un appel d'offres — les autres sections sont rédigées séparément dans d'autres appels, tu ne dois traiter que celle-ci.
 
 Interlocuteur principal côté entreprise : ${interlocuteur}
 Corps de métier concerné : ${corpsDeMetier}
 Nombre de personnes affectées au chantier : ${nombrePersonnes}
 
-# Thématiques demandées (les questions auxquelles ce mémoire doit répondre)
-Structure le corps du mémoire en une section principale par thématique ci-dessous — ne pars pas sur un tout autre sujet non listé, mais tu peux librement ajouter une introduction générale en début de document et une conclusion en fin si cela renforce le mémoire :
-${thematiquesSection}
+# Thématique à traiter dans cette section
+${thematique}
 
 # Informations sur l'entreprise (uniquement ce qui a été renseigné)
 
@@ -1050,40 +1075,13 @@ ${moyensHumainsSection}
 ${referenceSection}
 
 # Documents du projet en cours
-(CCTP, plans, cahier des charges... C'est le contenu sur lequel le mémoire doit être précisément basé.)
+(CCTP, plans, cahier des charges... C'est le contenu sur lequel la section doit être précisément basée.)
 
 ${projectDocsSection}
 
-Rédige maintenant le mémoire technique complet, directement en Markdown (voir le format attendu dans les instructions système). Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases. Tu as toute la place nécessaire (aucune limite de longueur pratique) : ne t'arrête pas dès qu'un point minimal est couvert, traite chaque thématique avec le niveau de détail et d'exhaustivité que tu produirais si on te demandait, tour après tour dans une conversation, d'approfondir chaque partie une à une.`;
+Rédige maintenant cette section, directement en Markdown (voir le format attendu dans les instructions système). Développe-la en profondeur (plusieurs paragraphes/points, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de contenu réduit à une ou deux phrases. Tu as toute la place nécessaire pour cette section : traite-la avec le niveau de détail et d'exhaustivité que tu produirais si on te demandait d'approfondir spécifiquement ce point dans une conversation.`;
 
-    const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt);
-    const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier);
-
-    const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
-    const { error: uploadError } = await supabase.storage
-      .from('memoire_generated')
-      .upload(fileName, docxBytes, {
-        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        upsert: false,
-      });
-    if (uploadError) throw new Error(uploadError.message);
-
-    await supabase
-      .from('memoire_generations')
-      .update({
-        status: 'done',
-        generated_docx_path: fileName,
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-      })
-      .eq('id', generationId);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Erreur inconnue';
-    await supabase
-      .from('memoire_generations')
-      .update({ status: 'error', error_message: message })
-      .eq('id', generationId);
-  }
+  return { systemPrompt, userPrompt };
 }
 
 Deno.serve(async (req) => {
@@ -1098,6 +1096,9 @@ Deno.serve(async (req) => {
     thematiques?: string[];
     nombrePersonnes?: number;
     projectDocs?: ProjectDoc[];
+    thematique?: string;
+    sectionIndex?: number;
+    totalSections?: number;
   };
   try {
     body = await req.json();
@@ -1105,13 +1106,14 @@ Deno.serve(async (req) => {
     return json({ error: 'Corps de requête JSON invalide' }, 400);
   }
 
+  // --- Consultation d'une génération en cours (utile pour reprendre après un rechargement) ---
   if (body.action === 'status') {
     const { generationId } = body;
     if (!generationId) return json({ error: 'generationId requis' }, 400);
 
     const { data, error } = await supabase
       .from('memoire_generations')
-      .select('status, generated_docx_path, error_message, input_tokens, output_tokens')
+      .select('status, generated_docx_path, error_message, input_tokens, output_tokens, sections_json, thematiques')
       .eq('id', generationId)
       .single();
     if (error) return json({ error: error.message }, 500);
@@ -1125,60 +1127,183 @@ Deno.serve(async (req) => {
       return json({
         status: 'done',
         downloadUrl: publicUrl,
-        usage: {
-          inputTokens: data.input_tokens ?? 0,
-          outputTokens: data.output_tokens ?? 0,
-          maxTokens: MAX_OUTPUT_TOKENS,
-        },
+        usage: { inputTokens: data.input_tokens ?? 0, outputTokens: data.output_tokens ?? 0 },
       });
     }
     if (data.status === 'error') return json({ status: 'error', error: data.error_message });
-    return json({ status: data.status });
+    return json({
+      status: data.status,
+      sectionsGenerated: Array.isArray(data.sections_json) ? data.sections_json.length : 0,
+      totalThematiques: Array.isArray(data.thematiques) ? data.thematiques.length : 0,
+    });
   }
 
-  const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
+  // --- Démarre une génération : crée juste la ligne, aucun appel Claude ici ---
+  if (body.action === 'start') {
+    const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
 
-  if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
-    return json({ error: 'interlocuteur invalide' }, 400);
-  }
-  if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
-    return json({ error: 'corpsDeMetier invalide' }, 400);
-  }
-  if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
-    return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
-  }
-  if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
-    return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
-  }
-  if (!projectDocs || projectDocs.length === 0) {
-    return json({ error: 'Au moins un document projet est requis' }, 400);
+    if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+      return json({ error: 'interlocuteur invalide' }, 400);
+    }
+    if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+      return json({ error: 'corpsDeMetier invalide' }, 400);
+    }
+    if (!thematiques || thematiques.length === 0 || !thematiques.every((t) => typeof t === 'string' && t.trim().length > 0)) {
+      return json({ error: 'thematiques invalide : au moins une thématique non vide requise' }, 400);
+    }
+    if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
+      return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
+    }
+    if (!projectDocs || projectDocs.length === 0) {
+      return json({ error: 'Au moins un document projet est requis' }, 400);
+    }
+
+    const { data: generation, error: insertGenError } = await supabase
+      .from('memoire_generations')
+      .insert({
+        interlocuteur,
+        corps_de_metier: corpsDeMetier,
+        thematiques,
+        nombre_personnes: nombrePersonnes,
+        project_doc_names: projectDocs.map((d) => d.name),
+        status: 'processing',
+      })
+      .select()
+      .single();
+    if (insertGenError) return json({ error: insertGenError.message }, 500);
+
+    return json({ ok: true, generationId: generation.id });
   }
 
-  const { data: generation, error: insertGenError } = await supabase
-    .from('memoire_generations')
-    .insert({
-      interlocuteur,
-      corps_de_metier: corpsDeMetier,
-      thematiques,
-      nombre_personnes: nombrePersonnes,
-      project_doc_names: projectDocs.map((d) => d.name),
-      status: 'processing',
-    })
-    .select()
-    .single();
-  if (insertGenError) return json({ error: insertGenError.message }, 500);
+  // --- Génère UNE section (un appel Claude court) et l'accumule dans la ligne ---
+  if (body.action === 'generate-section') {
+    const { generationId, interlocuteur, corpsDeMetier, nombrePersonnes, projectDocs, thematique, sectionIndex, totalSections } = body;
 
-  const backgroundTask = runGeneration(
-    generation.id,
-    interlocuteur,
-    corpsDeMetier,
-    thematiques,
-    nombrePersonnes,
-    projectDocs
-  );
+    if (!generationId) return json({ error: 'generationId requis' }, 400);
+    if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+      return json({ error: 'interlocuteur invalide' }, 400);
+    }
+    if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
+      return json({ error: 'corpsDeMetier invalide' }, 400);
+    }
+    if (!thematique || typeof thematique !== 'string' || !thematique.trim()) {
+      return json({ error: 'thematique requise' }, 400);
+    }
+    if (!Number.isInteger(nombrePersonnes) || nombrePersonnes! < 1 || nombrePersonnes! > 8) {
+      return json({ error: 'nombrePersonnes invalide : entier entre 1 et 8 requis' }, 400);
+    }
+    if (!projectDocs || projectDocs.length === 0) {
+      return json({ error: 'Au moins un document projet est requis' }, 400);
+    }
+    if (!Number.isInteger(sectionIndex) || sectionIndex! < 0 || !Number.isInteger(totalSections) || totalSections! < 1) {
+      return json({ error: 'sectionIndex/totalSections invalides' }, 400);
+    }
 
-  // @ts-expect-error EdgeRuntime est fourni par le runtime Supabase, pas typé par npm:docx/supabase-js
-  EdgeRuntime.waitUntil(backgroundTask);
+    try {
+      const context = await gatherContext(corpsDeMetier, interlocuteur);
+      const { systemPrompt, userPrompt } = buildSectionPrompts(
+        context,
+        interlocuteur,
+        corpsDeMetier,
+        nombrePersonnes!,
+        projectDocs,
+        thematique,
+        sectionIndex!,
+        totalSections!
+      );
+      const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt, SECTION_MAX_OUTPUT_TOKENS);
 
-  return json({ ok: true, generationId: generation.id });
+      const { data: current, error: fetchError } = await supabase
+        .from('memoire_generations')
+        .select('sections_json, metadata_json, input_tokens, output_tokens')
+        .eq('id', generationId)
+        .single();
+      if (fetchError) throw new Error(fetchError.message);
+
+      const existingSections = (Array.isArray(current.sections_json) ? current.sections_json : []) as MemoireSection[];
+      const newSections = [...existingSections, ...content.sections];
+      const newMetadata: MemoireMetadata =
+        sectionIndex === 0 ? { ...(current.metadata_json ?? {}), ...metadata } : current.metadata_json ?? {};
+      const newInputTokens = (current.input_tokens ?? 0) + usage.inputTokens;
+      const newOutputTokens = (current.output_tokens ?? 0) + usage.outputTokens;
+
+      const { error: updateError } = await supabase
+        .from('memoire_generations')
+        .update({
+          sections_json: newSections,
+          metadata_json: newMetadata,
+          input_tokens: newInputTokens,
+          output_tokens: newOutputTokens,
+        })
+        .eq('id', generationId);
+      if (updateError) throw new Error(updateError.message);
+
+      return json({
+        ok: true,
+        usage: {
+          sectionInputTokens: usage.inputTokens,
+          sectionOutputTokens: usage.outputTokens,
+          totalInputTokens: newInputTokens,
+          totalOutputTokens: newOutputTokens,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur inconnue';
+      await supabase.from('memoire_generations').update({ status: 'error', error_message: message }).eq('id', generationId);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // --- Assemble le .docx final à partir de toutes les sections déjà générées ---
+  if (body.action === 'finalize') {
+    const { generationId, interlocuteur, corpsDeMetier } = body;
+    if (!generationId) return json({ error: 'generationId requis' }, 400);
+    if (!interlocuteur || !corpsDeMetier) return json({ error: 'interlocuteur/corpsDeMetier requis' }, 400);
+
+    try {
+      const { data: row, error: fetchError } = await supabase
+        .from('memoire_generations')
+        .select('sections_json, metadata_json, input_tokens, output_tokens')
+        .eq('id', generationId)
+        .single();
+      if (fetchError) throw new Error(fetchError.message);
+
+      const sections = (Array.isArray(row.sections_json) ? row.sections_json : []) as MemoireSection[];
+      if (sections.length === 0) throw new Error('Aucune section générée : impossible de finaliser le mémoire.');
+
+      const content: MemoireContent = { title: 'Mémoire technique', sections };
+      const metadata: MemoireMetadata = row.metadata_json ?? {};
+      const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier);
+
+      const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
+      const { error: uploadError } = await supabase.storage
+        .from('memoire_generated')
+        .upload(fileName, docxBytes, {
+          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          upsert: false,
+        });
+      if (uploadError) throw new Error(uploadError.message);
+
+      await supabase
+        .from('memoire_generations')
+        .update({ status: 'done', generated_docx_path: fileName })
+        .eq('id', generationId);
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('memoire_generated').getPublicUrl(fileName, { download: fileName });
+
+      return json({
+        ok: true,
+        downloadUrl: publicUrl,
+        usage: { inputTokens: row.input_tokens ?? 0, outputTokens: row.output_tokens ?? 0 },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur inconnue';
+      await supabase.from('memoire_generations').update({ status: 'error', error_message: message }).eq('id', generationId);
+      return json({ error: message }, 500);
+    }
+  }
+
+  return json({ error: 'action invalide' }, 400);
 });
