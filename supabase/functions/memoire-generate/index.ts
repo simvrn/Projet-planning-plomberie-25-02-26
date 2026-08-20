@@ -559,18 +559,26 @@ async function runGeneration(
 
     const configRecord = config as unknown as Record<string, string>;
 
-    const companyInfoSections = [
-      `## Moyens humains (pour ${interlocuteur})\n${moyensHumains.contenu || '(non renseigné)'}`,
-      ...COMPANY_CONFIG_FIELDS.map(
-        ([col, label]) => `## ${label}\n${configRecord[col] || '(non renseigné)'}`
-      ),
-    ].join('\n\n');
+    // On n'inclut que les rubriques réellement renseignées : afficher 15 blocs "(non renseigné)"
+    // noie le prompt et pousse le modèle vers un mode "cocher les cases" plutôt qu'une rédaction
+    // aussi riche que possible sur ce qui est effectivement fourni.
+    const companyInfoBlocks: string[] = [];
+    if (moyensHumains.contenu?.trim()) {
+      companyInfoBlocks.push(`## Moyens humains (pour ${interlocuteur})\n${moyensHumains.contenu.trim()}`);
+    }
+    for (const [col, label] of COMPANY_CONFIG_FIELDS) {
+      const value = configRecord[col]?.trim();
+      if (value) companyInfoBlocks.push(`## ${label}\n${value}`);
+    }
+    const companyInfoSections = companyInfoBlocks.length
+      ? companyInfoBlocks.join('\n\n')
+      : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier — base-toi sur les documents projet et reste générique sur l'entreprise.)";
 
     const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
 
 ${OUTPUT_FORMAT_INSTRUCTIONS}
 
-# Informations sur l'entreprise
+# Informations sur l'entreprise (uniquement ce qui a été renseigné)
 
 ${companyInfoSections}`;
 
@@ -596,7 +604,7 @@ Corps de métier concerné : ${corpsDeMetier}
 Nombre de personnes affectées au chantier : ${nombrePersonnes}
 
 # Thématiques demandées par le CCTP
-Le mémoire doit traiter EXCLUSIVEMENT les thématiques suivantes (une section par thématique, pas de section hors de cette liste) :
+Structure le corps du mémoire en une section principale par thématique ci-dessous — ne pars pas sur un tout autre sujet non listé, mais tu peux librement ajouter une introduction générale en début de document et une conclusion en fin si cela renforce le mémoire :
 ${thematiquesSection}
 
 # Mémoires de référence de l'entreprise
