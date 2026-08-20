@@ -339,34 +339,68 @@ async function buildDocx(
 ): Promise<Uint8Array> {
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
 
-  children.push(
-    new Paragraph({ text: content.title, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER })
-  );
-  children.push(new Paragraph({ text: '', spacing: { after: 300 } }));
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE_PALE },
-      border: {
-        top: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
-        bottom: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
-        left: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
-        right: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
-      },
-      spacing: { before: 200, after: 200 },
-      children: [
-        new TextRun({ text: corpsDeMetier, bold: true, color: BRAND_BLUE, size: 28 }),
-        new TextRun({ text: `  —  Interlocuteur : ${interlocuteur}`, color: BRAND_BLUE, size: 24 }),
-      ],
-    })
-  );
-  children.push(
-    new Paragraph({
-      text: new Date().toLocaleDateString('fr-FR'),
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 200 },
-    })
-  );
+  children.push(new Paragraph({ text: '', spacing: { after: 600 } }));
+
+  const coverBanner = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE },
+            verticalAlign: VerticalAlign.CENTER,
+            margins: { top: 400, bottom: 400, left: 300, right: 300 },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: content.title, bold: true, color: 'FFFFFF', size: 44 })],
+              }),
+            ],
+          }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE_PALE },
+            verticalAlign: VerticalAlign.CENTER,
+            margins: { top: 200, bottom: 200, left: 300, right: 300 },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 60 },
+                children: [new TextRun({ text: corpsDeMetier, bold: true, color: BRAND_BLUE, size: 28 })],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({ text: `Interlocuteur : ${interlocuteur}`, color: BRAND_BLUE, size: 22 }),
+                ],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 120 },
+                children: [
+                  new TextRun({ text: new Date().toLocaleDateString('fr-FR'), color: '4A4A4A', size: 20 }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+  children.push(coverBanner);
   children.push(new Paragraph({ children: [new PageBreak()] }));
 
   children.push(new Paragraph({ text: 'Sommaire', heading: HeadingLevel.HEADING_1 }));
@@ -550,7 +584,7 @@ ${companyInfoSections}`;
       : 'Aucun mémoire de référence disponible.';
 
     const projectDocsSection = projectDocs
-      .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 60000)}`)
+      .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 400000)}`)
       .join('\n\n---\n\n');
 
     const thematiquesSection = thematiques.map((t) => `- ${t}`).join('\n');
@@ -575,7 +609,7 @@ ${referenceSection}
 
 ${projectDocsSection}
 
-Rédige maintenant le mémoire technique complet, directement en Markdown (voir le format attendu dans les instructions système). Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases.`;
+Rédige maintenant le mémoire technique complet, directement en Markdown (voir le format attendu dans les instructions système). Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases. Tu as toute la place nécessaire (aucune limite de longueur pratique) : ne t'arrête pas dès qu'un point minimal est couvert, traite chaque thématique avec le niveau de détail et d'exhaustivité que tu produirais si on te demandait, tour après tour dans une conversation, d'approfondir chaque partie une à une.`;
 
     const { content, usage } = await callClaude(systemPrompt, userPrompt);
     const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
