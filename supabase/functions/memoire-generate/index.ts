@@ -109,7 +109,10 @@ const COMPANY_CONFIG_FIELDS: [string, string][] = [
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
 Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.
-Sois exhaustif et développé : chaque section doit être substantiellement traitée (plusieurs paragraphes et/ou plusieurs points détaillés), jamais réduite à une ou deux phrases génériques. Appuie-toi précisément sur le CCTP (cite les articles et exigences concernés, explique concrètement comment l'entreprise y répond) et sur l'intégralité des informations entreprise fournies pour chaque section. Un mémoire technique de qualité pour un appel d'offres compte généralement plusieurs pages par thématique traitée : vise l'exhaustivité et la précision, pas la concision — rédige comme tu le ferais dans une conversation normale où on te demanderait ce document, sans te limiter.`;
+
+Règle la plus importante : un mémoire technique répond à une grille de notation précise. Chaque section doit répondre DIRECTEMENT et PRÉCISÉMENT à la thématique/au critère demandé — ce n'est ni un résumé du CCTP, ni une présentation générale du projet ou de l'entreprise. Un jury qui note sur ce critère précis doit pouvoir trouver la réponse en 30 secondes de lecture, sans avoir à extraire l'information pertinente d'un texte qui part dans plusieurs directions. Avant d'écrire un paragraphe, demande-toi : "est-ce que ça répond directement à la question posée, ou est-ce que je suis en train de recontextualiser/résumer le projet ?" Si c'est la seconde option, ne l'écris pas (sauf si un minimum de contexte est réellement nécessaire pour que la réponse ait du sens).
+
+Sois développé, mais uniquement sur ce qui sert la réponse : plusieurs paragraphes et/ou points détaillés sont bienvenus tant qu'ils apportent une information nouvelle et pertinente pour le critère traité (moyens concrets, méthode précise, chiffres, références aux articles du CCTP qui imposent cette exigence et à la façon dont l'entreprise y répond point par point). N'ajoute jamais de remplissage générique ("nous accordons une grande importance à...", récit large du projet) juste pour occuper de la place — la longueur doit venir de la précision, pas l'inverse.`;
 
 // Toujours ajoutée, même si l'admin a défini un prompt système personnalisé : c'est une exigence
 // technique du pipeline (le texte est ensuite parsé en Markdown pour générer le .docx), pas un
@@ -1061,6 +1064,8 @@ Nombre de personnes affectées au chantier : ${nombrePersonnes}
 # Thématique à traiter dans cette section
 ${thematique}
 
+Cette thématique correspond exactement à un critère de notation de l'appel d'offres. Réponds UNIQUEMENT à ce critère précis — n'écris pas de présentation générale du projet, du CCTP ou de l'entreprise qui ne servirait pas directement à y répondre. Tout ce que tu vas puiser dans le CCTP ci-dessous doit être choisi parce que c'est pertinent pour CETTE thématique, pas parce que ça fait partie du projet en général.
+
 # Informations sur l'entreprise (uniquement ce qui a été renseigné)
 
 ${companyInfoSection}
@@ -1079,7 +1084,7 @@ ${referenceSection}
 
 ${projectDocsSection}
 
-Rédige maintenant cette section, directement en Markdown (voir le format attendu dans les instructions système). Développe-la en profondeur (plusieurs paragraphes/points, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de contenu réduit à une ou deux phrases. Tu as toute la place nécessaire pour cette section : traite-la avec le niveau de détail et d'exhaustivité que tu produirais si on te demandait d'approfondir spécifiquement ce point dans une conversation.`;
+Rédige maintenant cette section, directement en Markdown (voir le format attendu dans les instructions système). Réponds précisément et concrètement à la thématique ci-dessus, en t'appuyant sur les passages du CCTP qui la concernent directement (cite les articles, explique point par point comment l'entreprise y répond). N'inclus aucun contenu qui décrirait le projet ou le CCTP de façon générale sans répondre à cette thématique précise — un jury doit pouvoir évaluer ce critère sans avoir à trier de l'information hors-sujet. Développe autant que nécessaire pour être complet sur CE point, mais rien de plus.`;
 
   return { systemPrompt, userPrompt };
 }
