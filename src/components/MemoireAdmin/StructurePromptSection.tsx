@@ -36,10 +36,11 @@ export function StructurePromptSection({ password, corpsDeMetier, config, onSave
     <div className="max-w-2xl space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">Structure / mise en page — {corpsDeMetier}</h3>
       <p className="text-sm text-gray-600">
-        Décris l'ordre des sections et la mise en page attendue (ex: "1. Présentation de l'entreprise,
-        2. Moyens humains, 3. Moyens matériels, 4. Organisation de chantier...") pour que tous les
-        mémoires de ce corps de métier suivent la même structure. Laisser vide pour laisser l'IA
-        structurer librement.
+        Décris l'ordre des sections et la mise en forme attendue (ex: "1. Présentation de l'entreprise,
+        2. Moyens humains, 3. Moyens matériels, 4. Organisation de chantier...", "utilise des listes à
+        puces pour le matériel et les étapes", "mets en gras les termes clés"...) pour que tous les
+        mémoires de ce corps de métier suivent la même structure. C'est le seul endroit qui pilote le
+        format — rien n'est imposé ailleurs. Laisser vide pour laisser l'IA structurer librement.
       </p>
 
       <textarea
