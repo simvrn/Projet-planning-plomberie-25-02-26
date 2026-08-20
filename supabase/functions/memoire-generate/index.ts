@@ -77,7 +77,8 @@ const COMPANY_CONFIG_FIELDS: [string, string][] = [
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
-Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.`;
+Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.
+Sois exhaustif et développé : chaque section doit être substantiellement traitée (plusieurs paragraphes et/ou plusieurs points détaillés), jamais réduite à une ou deux phrases génériques. Appuie-toi précisément sur le CCTP (cite les articles et exigences concernés, explique concrètement comment l'entreprise y répond) et sur l'intégralité des informations entreprise fournies pour chaque section. Un mémoire technique de qualité pour un appel d'offres compte généralement plusieurs pages par thématique traitée : vise l'exhaustivité et la précision, pas la concision. (Ceci concerne le fond, pas la forme — la mise en forme reste entièrement pilotée par la consigne de structure ci-dessous si elle est renseignée.)`;
 
 interface ProjectDoc {
   name: string;
@@ -160,7 +161,7 @@ async function callClaude(systemPrompt: string, userPrompt: string): Promise<Mem
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 16000,
+      max_tokens: 32000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [memoireTool],
@@ -407,7 +408,7 @@ ${referenceSection}
 
 ${projectDocsSection}
 
-Génère maintenant le mémoire technique complet en appelant l'outil submit_memoire.`;
+Génère maintenant le mémoire technique complet en appelant l'outil submit_memoire. Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases.`;
 
     const content = await callClaude(systemPrompt, userPrompt);
     const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
