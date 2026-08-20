@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { extractTextFromFile } from '../../lib/memoire/textExtraction';
@@ -32,6 +32,23 @@ export function ProjectDocsUpload() {
   } = useMemoireStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (generationStatus !== 'generating') {
+      setElapsedSeconds(0);
+      return;
+    }
+    const start = Date.now();
+    const interval = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, [generationStatus]);
+
+  function formatElapsed(totalSeconds: number): string {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
 
   async function processDoc(doc: ProjectDocFile) {
     try {
@@ -127,6 +144,13 @@ export function ProjectDocsUpload() {
         <p className="mt-4 text-sm text-red-600">Erreur lors de la génération : {generationError}</p>
       )}
 
+      {generationStatus === 'generating' && (
+        <p className="mt-4 text-sm text-gray-500">
+          Génération en cours ({formatElapsed(elapsedSeconds)})... ça peut prendre plusieurs minutes,
+          surtout avec beaucoup de thématiques sélectionnées — c'est normal, laisse tourner.
+        </p>
+      )}
+
       <div className="mt-8 flex justify-between">
         <Button variant="secondary" onClick={() => setStep('premoire')}>
           Retour
@@ -135,9 +159,16 @@ export function ProjectDocsUpload() {
           disabled={!allReady || generationStatus === 'generating'}
           onClick={handleGenerate}
         >
-          {generationStatus === 'generating' ? 'Génération en cours...' : 'Générer le mémoire'}
+          {generationStatus === 'generating'
+            ? `Génération en cours... (${formatElapsed(elapsedSeconds)})`
+            : 'Générer le mémoire'}
         </Button>
       </div>
+      {generationStatus !== 'generating' && (
+        <p className="mt-2 text-xs text-gray-400 text-right">
+          Peut prendre plusieurs minutes selon le nombre de thématiques sélectionnées.
+        </p>
+      )}
 
       <PdfToTxtTool />
     </div>

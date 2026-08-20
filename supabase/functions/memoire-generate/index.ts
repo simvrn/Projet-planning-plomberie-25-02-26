@@ -174,10 +174,24 @@ async function callClaude(systemPrompt: string, userPrompt: string): Promise<Mem
   }
 
   const data = await response.json();
+
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error(
+      "La réponse a été coupée avant la fin (trop de contenu demandé d'un coup). Réduis le nombre de thématiques sélectionnées ou raccourcis les documents projet, puis réessaie."
+    );
+  }
+
   const toolUse = data.content?.find((block: { type: string }) => block.type === 'tool_use');
   if (!toolUse) throw new Error('Claude n’a pas retourné de contenu structuré (submit_memoire manquant)');
 
-  return toolUse.input as MemoireContent;
+  const parsed = toolUse.input as MemoireContent;
+  if (!Array.isArray(parsed.sections) || parsed.sections.some((s) => !Array.isArray(s.content))) {
+    throw new Error(
+      'Claude a retourné une structure incomplète pour au moins une section. Réessaie, ou réduis le nombre de thématiques sélectionnées.'
+    );
+  }
+
+  return parsed;
 }
 
 function headingLevelFor(level: number) {
@@ -231,8 +245,8 @@ async function buildDocx(
 
   for (const section of content.sections) {
     children.push(new Paragraph({ text: section.heading, heading: headingLevelFor(section.level) }));
-    for (const block of section.content) {
-      const runs = parseInlineRuns(block.text);
+    for (const block of section.content ?? []) {
+      const runs = parseInlineRuns(block.text ?? '');
       if (block.type === 'bullet') {
         children.push(new Paragraph({ children: runs, bullet: { level: 0 } }));
       } else if (block.type === 'numbered') {
