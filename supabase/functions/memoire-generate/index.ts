@@ -161,7 +161,7 @@ async function callClaude(systemPrompt: string, userPrompt: string): Promise<Mem
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 32000,
+      max_tokens: 120000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [memoireTool],
