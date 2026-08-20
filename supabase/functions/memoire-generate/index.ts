@@ -28,16 +28,33 @@ import {
   TableCell,
   WidthType,
   VerticalAlign,
+  Header,
   Footer,
   PageNumber,
 } from 'npm:docx@9';
 
 const NUMBERED_LIST_REFERENCE = 'memoire-numbered-list';
+const BULLET_LIST_REFERENCE = 'memoire-bullet-list';
 
-// Charte graphique du document généré : bleu corporate + gris clair pour les encadrés/tableaux.
+// Charte graphique du document généré : bleu corporate + accents pour bandeaux/encadrés/tableaux.
 const BRAND_BLUE = '1F4E79';
 const BRAND_BLUE_LIGHT = 'DCE6F1';
 const BRAND_BLUE_PALE = 'EEF3FA';
+const BADGE_DARK = '15374F';
+const ACCENT_BLUE = '3F7CAC';
+const TOTAL_ROW_FILL = 'DCEEE8';
+const ZEBRA_FILL = 'F5F7FA';
+
+// L'app est l'outil interne d'EDETEL SYSTEMS : ces infos figurent en toutes lettres sur le
+// papier à en-tête réel de l'entreprise, ce n'est pas une donnée inventée.
+const COMPANY_NAME = 'EDETEL SYSTEMS';
+const COMPANY_ADDRESS = '2 rue des Brosses – 37270 LARÇAY';
+
+const CALLOUT_PALETTE: { border: string; fill: string; text: string }[] = [
+  { border: '2E7D6B', fill: 'E1F0EA', text: '1F5C4D' },
+  { border: '2E5C8A', fill: 'E4EDF7', text: '1F4E79' },
+  { border: 'C97A3A', fill: 'FBEEE1', text: 'A85D22' },
+];
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,7 +115,26 @@ Sois exhaustif et développé : chaque section doit être substantiellement trai
 // technique du pipeline (le texte est ensuite parsé en Markdown pour générer le .docx), pas un
 // choix de style — sans ça le parseur ne peut pas reconstruire le document.
 const OUTPUT_FORMAT_INSTRUCTIONS = `# Format de réponse attendu
-Réponds directement en rédigeant le mémoire en Markdown, sans préambule ni commentaire hors document (pas de "Voici le mémoire..."). Utilise # pour le titre principal, ## pour chaque section/thématique, ### pour d'éventuelles sous-parties, des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, et **gras** pour les termes importants.`;
+Réponds directement en rédigeant le mémoire en Markdown, sans préambule ni commentaire hors document (pas de "Voici le mémoire...").
+
+Avant toute chose, commence ta réponse par un bloc de métadonnées entre triples backticks avec le mot "meta", pour les informations suivantes SI ET SEULEMENT SI elles sont explicitement indiquées dans les documents du projet fournis (CCTP, règlement de consultation, acte d'engagement...) — laisse la valeur vide après les deux-points si l'information n'apparaît pas, ne l'invente JAMAIS :
+\`\`\`meta
+client: (nom du maître d'ouvrage / bailleur / donneur d'ordre)
+objet: (intitulé du marché ou de l'accord-cadre)
+lot: (numéro et intitulé du lot concerné)
+pouvoir_adjudicateur: (nom et fonction du signataire côté maître d'ouvrage)
+montant_maximum: (montant maximum du marché HT, si indiqué)
+perimetre: (nombre de résidences/logements/sites ou périmètre géographique)
+duree: (durée du marché et modalités de reconduction)
+\`\`\`
+
+Puis structure le corps du document avec exactement 4 niveaux de titres Markdown, chacun ayant un rôle précis dans la mise en page finale :
+- # : le titre général du mémoire (une seule fois, juste après le bloc meta).
+- ## : chaque section principale, une par thématique demandée (elle sera mise en avant avec un bandeau numéroté). Si la thématique demandée précise un nombre de points (ex. "Méthodologie (20 points)"), reporte ce "(N points)" à la toute fin du titre ##.
+- ### : les sous-parties numérotées à l'intérieur d'une section (ex. présentation, données chiffrées, équipe dédiée...). C'est le niveau le plus utilisé pour découper le contenu.
+- #### : uniquement pour scinder occasionnellement une sous-partie ### en plusieurs blocs courts et bien distincts (ex. plusieurs domaines de compétences, plusieurs procédures) — reste exceptionnel, n'en abuse pas.
+
+Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.`;
 
 interface ProjectDoc {
   name: string;
@@ -116,11 +152,52 @@ interface MemoireSection {
   heading: string;
   level: number;
   content: MemoireContentBlock[];
+  points?: number;
 }
 
 interface MemoireContent {
   title: string;
   sections: MemoireSection[];
+}
+
+interface MemoireMetadata {
+  client?: string;
+  objet?: string;
+  lot?: string;
+  pouvoirAdjudicateur?: string;
+  montantMaximum?: string;
+  perimetre?: string;
+  duree?: string;
+}
+
+// Extrait le bloc ```meta ...``` que Claude place en tête de sa réponse (voir
+// OUTPUT_FORMAT_INSTRUCTIONS) et retire ce bloc du texte avant le parsing des sections, pour
+// qu'il ne soit jamais interprété comme du contenu de mémoire.
+function extractMetadata(markdown: string): { metadata: MemoireMetadata; cleaned: string } {
+  const match = markdown.match(/```meta\s*([\s\S]*?)```/i);
+  const metadata: MemoireMetadata = {};
+  if (!match) return { metadata, cleaned: markdown };
+
+  const fieldMap: Record<string, keyof MemoireMetadata> = {
+    client: 'client',
+    objet: 'objet',
+    lot: 'lot',
+    pouvoir_adjudicateur: 'pouvoirAdjudicateur',
+    montant_maximum: 'montantMaximum',
+    perimetre: 'perimetre',
+    duree: 'duree',
+  };
+
+  for (const line of match[1].split('\n')) {
+    const kv = line.match(/^\s*([a-z_]+)\s*:\s*(.*)$/i);
+    if (!kv) continue;
+    const field = fieldMap[kv[1].trim().toLowerCase()];
+    const value = kv[2].trim();
+    if (field && value) metadata[field] = value;
+  }
+
+  const cleaned = markdown.slice(0, match.index) + markdown.slice((match.index ?? 0) + match[0].length);
+  return { metadata, cleaned };
 }
 
 function truncate(text: string, max: number): string {
@@ -164,6 +241,14 @@ function parseTableRow(line: string): string[] {
     .map((cell) => cell.trim().replace(/\*\*/g, ''));
 }
 
+// Extrait un "(N points)" en fin de titre de section (reporté depuis la thématique demandée,
+// voir OUTPUT_FORMAT_INSTRUCTIONS) pour l'afficher comme badge séparé plutôt que dans le texte.
+function extractPoints(heading: string): { heading: string; points?: number } {
+  const match = heading.match(/\(\s*(\d+)\s*points?\s*\)\s*$/i);
+  if (!match) return { heading };
+  return { heading: heading.slice(0, match.index).trim(), points: parseInt(match[1], 10) };
+}
+
 function parseMarkdownToMemoire(markdown: string): MemoireContent {
   const lines = markdown.split('\n');
   let title = 'Mémoire technique';
@@ -175,7 +260,7 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
     const line = lines[i].trim();
     if (!line) continue;
 
-    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+    const headingMatch = line.match(/^(#{1,4})\s+(.*)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       const text = headingMatch[2].replace(/\*\*/g, '').trim();
@@ -184,7 +269,8 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
         titleFound = true;
         continue;
       }
-      currentSection = { heading: text, level: Math.min(level, 3), content: [] };
+      const { heading, points } = extractPoints(text);
+      currentSection = { heading, level: Math.min(level, 4), content: [], points };
       sections.push(currentSection);
       continue;
     }
@@ -229,7 +315,7 @@ const CLAUDE_CALL_TIMEOUT_MS = 9 * 60 * 1000; // 9 minutes — au-delà, on cons
 async function callClaude(
   systemPrompt: string,
   userPrompt: string
-): Promise<{ content: MemoireContent; usage: TokenUsage }> {
+): Promise<{ content: MemoireContent; metadata: MemoireMetadata; usage: TokenUsage }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CLAUDE_CALL_TIMEOUT_MS);
 
@@ -277,7 +363,8 @@ async function callClaude(
   const textBlock = data.content?.find((block: { type: string }) => block.type === 'text');
   if (!textBlock?.text) throw new Error('Claude n’a pas retourné de texte');
 
-  const parsed = parseMarkdownToMemoire(textBlock.text);
+  const { metadata, cleaned } = extractMetadata(textBlock.text);
+  const parsed = parseMarkdownToMemoire(cleaned);
   if (parsed.sections.length === 0) {
     throw new Error('Claude n’a pas retourné de contenu structuré exploitable (aucune section détectée)');
   }
@@ -288,13 +375,7 @@ async function callClaude(
     maxTokens: MAX_OUTPUT_TOKENS,
   };
 
-  return { content: parsed, usage };
-}
-
-function headingLevelFor(level: number) {
-  if (level <= 1) return HeadingLevel.HEADING_1;
-  if (level === 2) return HeadingLevel.HEADING_2;
-  return HeadingLevel.HEADING_3;
+  return { content: parsed, metadata, usage };
 }
 
 // Découpe "texte **important** suite" en TextRun normaux/gras, pour préserver la mise en
@@ -309,15 +390,68 @@ function parseInlineRuns(text: string): InstanceType<typeof TextRun>[] {
   );
 }
 
-function buildTable(rows: string[][]): InstanceType<typeof Table> {
+function noBorders() {
+  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  return { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none };
+}
+
+const TABLE_BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+  bottom: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+  left: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+  right: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+  insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+  insideVertical: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+};
+
+// Tableau à 2 colonnes : rendu en paires clé/valeur (colonne gauche teintée), utilisé pour les
+// fiches synthétiques (infos marché, structure d'équipe...).
+function buildKeyValueTable(rows: string[][]): InstanceType<typeof Table> {
+  const tableRows = rows.map((row) => {
+    const label = row[0] ?? '';
+    const value = row[1] ?? '';
+    const isHighlight = /moy|total|synthèse/i.test(label);
+    return new TableRow({
+      cantSplit: true,
+      children: [
+        new TableCell({
+          width: { size: 32, type: WidthType.PERCENTAGE },
+          shading: { type: ShadingType.CLEAR, fill: isHighlight ? TOTAL_ROW_FILL : BRAND_BLUE_LIGHT },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 80, bottom: 80, left: 120, right: 100 },
+          children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, color: BRAND_BLUE })] })],
+        }),
+        new TableCell({
+          width: { size: 68, type: WidthType.PERCENTAGE },
+          shading: isHighlight ? { type: ShadingType.CLEAR, fill: TOTAL_ROW_FILL } : undefined,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 80, bottom: 80, left: 120, right: 100 },
+          children: [new Paragraph({ children: parseInlineRuns(value) })],
+        }),
+      ],
+    });
+  });
+
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows, borders: TABLE_BORDERS });
+}
+
+// Tableau à 3+ colonnes : rendu classique avec ligne d'en-tête bleu foncé, lignes alternées, et
+// mise en avant de la ligne de total/synthèse si détectée.
+function buildHeaderRowTable(rows: string[][]): InstanceType<typeof Table> {
   const columnCount = Math.max(...rows.map((r) => r.length));
   const tableRows = rows.map((row, rowIndex) => {
     const isHeader = rowIndex === 0;
+    const isHighlight = !isHeader && /moy|total|synthèse/i.test(row[0] ?? '');
+    const zebra = !isHeader && !isHighlight && rowIndex % 2 === 0;
     const cells = Array.from({ length: columnCount }, (_, colIndex) => {
       const cellText = row[colIndex] ?? '';
+      let fill: string | undefined;
+      if (isHeader) fill = BRAND_BLUE;
+      else if (isHighlight) fill = TOTAL_ROW_FILL;
+      else if (zebra) fill = ZEBRA_FILL;
       return new TableCell({
         width: { size: Math.floor(100 / columnCount), type: WidthType.PERCENTAGE },
-        shading: isHeader ? { type: ShadingType.CLEAR, fill: BRAND_BLUE } : undefined,
+        shading: fill ? { type: ShadingType.CLEAR, fill } : undefined,
         verticalAlign: VerticalAlign.CENTER,
         margins: { top: 80, bottom: 80, left: 100, right: 100 },
         children: [
@@ -325,91 +459,230 @@ function buildTable(rows: string[][]): InstanceType<typeof Table> {
             children: [
               new TextRun({
                 text: cellText,
-                bold: isHeader,
-                color: isHeader ? 'FFFFFF' : undefined,
+                bold: isHeader || isHighlight,
+                color: isHeader ? 'FFFFFF' : isHighlight ? BRAND_BLUE : undefined,
               }),
             ],
           }),
         ],
       });
     });
-    return new TableRow({ children: cells });
+    return new TableRow({ cantSplit: true, children: cells });
   });
+
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows, borders: TABLE_BORDERS });
+}
+
+function buildTable(rows: string[][]): InstanceType<typeof Table> {
+  const columnCount = Math.max(...rows.map((r) => r.length));
+  return columnCount === 2 ? buildKeyValueTable(rows) : buildHeaderRowTable(rows);
+}
+
+function pushContentBlocks(
+  content: MemoireContentBlock[] | undefined,
+  children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[]
+) {
+  for (const block of content ?? []) {
+    if (block.type === 'table' && block.rows?.length) {
+      children.push(buildTable(block.rows));
+      children.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+      continue;
+    }
+    const runs = parseInlineRuns(block.text ?? '');
+    if (block.type === 'bullet') {
+      children.push(new Paragraph({ children: runs, numbering: { reference: BULLET_LIST_REFERENCE, level: 0 } }));
+    } else if (block.type === 'numbered') {
+      children.push(new Paragraph({ children: runs, numbering: { reference: NUMBERED_LIST_REFERENCE, level: 0 } }));
+    } else {
+      children.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
+    }
+  }
+}
+
+// Bandeau plein-cadre numéroté d'une section principale (thématique), avec badge "N points" à
+// droite si le titre en portait un (voir extractPoints). Le titre garde le style Word "Heading 1"
+// (formatage écrasé par les TextRun explicites) pour rester capté par le Sommaire (TOC).
+function buildSectionBanner(number: number, heading: string, points: number | undefined): InstanceType<typeof Table> {
+  const numberCellWidth = 8;
+  const pointsCellWidth = points ? 14 : 0;
+  const headingCellWidth = 100 - numberCellWidth - pointsCellWidth;
+
+  const cells = [
+    new TableCell({
+      width: { size: numberCellWidth, type: WidthType.PERCENTAGE },
+      shading: { type: ShadingType.CLEAR, fill: BADGE_DARK },
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 160, bottom: 160, left: 100, right: 100 },
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({ text: String(number), bold: true, color: 'FFFFFF', size: 32 })],
+        }),
+      ],
+    }),
+    new TableCell({
+      width: { size: headingCellWidth, type: WidthType.PERCENTAGE },
+      shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE },
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 160, bottom: 160, left: 200, right: 200 },
+      children: [
+        new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          children: [new TextRun({ text: heading, bold: true, color: 'FFFFFF', size: 24 })],
+        }),
+      ],
+    }),
+  ];
+
+  if (points) {
+    cells.push(
+      new TableCell({
+        width: { size: pointsCellWidth, type: WidthType.PERCENTAGE },
+        shading: { type: ShadingType.CLEAR, fill: ACCENT_BLUE },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 160, bottom: 160, left: 100, right: 100 },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 20 },
+            children: [new TextRun({ text: String(points), bold: true, color: 'FFFFFF', size: 24 })],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: 'points', color: 'FFFFFF', size: 16 })],
+          }),
+        ],
+      })
+    );
+  }
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: tableRows,
-    borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-      left: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-      right: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
-    },
+    borders: noBorders(),
+    rows: [new TableRow({ cantSplit: true, children: cells })],
   });
 }
 
-async function buildDocx(
-  content: MemoireContent,
-  interlocuteur: string,
-  corpsDeMetier: string
-): Promise<Uint8Array> {
-  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
+// Encadré coloré (utilisé pour les sous-parties #### occasionnelles) : barre d'accent + fond
+// teinté, couleur qui tourne dans une petite palette pour distinguer visuellement les blocs
+// consécutifs, comme dans les mémoires de référence de l'entreprise.
+function buildCalloutBox(
+  heading: string,
+  content: MemoireContentBlock[] | undefined,
+  colorIndex: number
+): InstanceType<typeof Table> {
+  const palette = CALLOUT_PALETTE[colorIndex % CALLOUT_PALETTE.length];
+  const innerChildren: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [
+    new Paragraph({
+      children: [new TextRun({ text: heading, bold: true, color: palette.text, size: 22 })],
+      spacing: { after: 100 },
+    }),
+  ];
+  pushContentBlocks(content, innerChildren);
 
-  children.push(new Paragraph({ text: '', spacing: { after: 600 } }));
-
-  const coverBanner = new Table({
+  return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: {
-      top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-    },
+    borders: noBorders(),
     rows: [
       new TableRow({
+        cantSplit: true,
         children: [
           new TableCell({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE },
-            verticalAlign: VerticalAlign.CENTER,
-            margins: { top: 400, bottom: 400, left: 300, right: 300 },
+            width: { size: 2, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.CLEAR, fill: palette.border },
+            children: [new Paragraph({ text: '' })],
+          }),
+          new TableCell({
+            width: { size: 98, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.CLEAR, fill: palette.fill },
+            margins: { top: 160, bottom: 160, left: 200, right: 200 },
+            children: innerChildren,
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+// En-tête répété sur chaque page : nom du client/lot à gauche, périmètre/date à droite, avec un
+// filet de séparation — reprend la mise en page des mémoires déjà livrés par l'entreprise.
+function buildRunningHeader(
+  metadata: MemoireMetadata,
+  corpsDeMetier: string
+): InstanceType<typeof Header> {
+  const leftText = metadata.client && metadata.lot
+    ? `${COMPANY_NAME} × ${metadata.client} | ${metadata.lot}`
+    : metadata.client
+    ? `${COMPANY_NAME} × ${metadata.client}`
+    : `${COMPANY_NAME} | Mémoire technique – ${corpsDeMetier}`;
+  const rightParts = [metadata.perimetre, new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })].filter(Boolean);
+
+  return new Header({
+    children: [
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: noBorders(),
+        rows: [
+          new TableRow({
             children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [new TextRun({ text: content.title, bold: true, color: 'FFFFFF', size: 44 })],
+              new TableCell({
+                width: { size: 65, type: WidthType.PERCENTAGE },
+                children: [new Paragraph({ children: [new TextRun({ text: leftText, bold: true, color: BRAND_BLUE, size: 15 })] })],
+              }),
+              new TableCell({
+                width: { size: 35, type: WidthType.PERCENTAGE },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [new TextRun({ text: rightParts.join(' · '), color: ACCENT_BLUE, size: 15 })],
+                  }),
+                ],
               }),
             ],
           }),
         ],
       }),
-      new TableRow({
-        children: [
-          new TableCell({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE_PALE },
-            verticalAlign: VerticalAlign.CENTER,
-            margins: { top: 200, bottom: 200, left: 300, right: 300 },
+      new Paragraph({ text: '', border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: ACCENT_BLUE, space: 4 } } }),
+    ],
+  });
+}
+
+function buildFooter(metadata: MemoireMetadata, corpsDeMetier: string): InstanceType<typeof Footer> {
+  const confidentialFor = metadata.client || corpsDeMetier;
+  return new Footer({
+    children: [
+      new Paragraph({ text: '', border: { top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT, space: 4 } } }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: noBorders(),
+        rows: [
+          new TableRow({
             children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 60 },
-                children: [new TextRun({ text: corpsDeMetier, bold: true, color: BRAND_BLUE, size: 28 })],
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
+              new TableCell({
+                width: { size: 75, type: WidthType.PERCENTAGE },
                 children: [
-                  new TextRun({ text: `Interlocuteur : ${interlocuteur}`, color: BRAND_BLUE, size: 22 }),
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `${COMPANY_NAME} – ${COMPANY_ADDRESS} | Confidentiel – usage exclusif ${confidentialFor}`,
+                        color: '5A5A5A',
+                        size: 15,
+                      }),
+                    ],
+                  }),
                 ],
               }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 120 },
+              new TableCell({
+                width: { size: 25, type: WidthType.PERCENTAGE },
                 children: [
-                  new TextRun({ text: new Date().toLocaleDateString('fr-FR'), color: '4A4A4A', size: 20 }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [
+                      new TextRun({ children: [PageNumber.CURRENT], color: BRAND_BLUE, size: 15 }),
+                      new TextRun({ text: ' / ', color: BRAND_BLUE, size: 15 }),
+                      new TextRun({ children: [PageNumber.TOTAL_PAGES], color: BRAND_BLUE, size: 15 }),
+                    ],
+                  }),
                 ],
               }),
             ],
@@ -418,36 +691,174 @@ async function buildDocx(
       }),
     ],
   });
-  children.push(coverBanner);
+}
+
+// Page de garde : bandeau EDETEL SYSTEMS, encart objet/client/lot/périmètre (uniquement les
+// lignes dont l'IA a effectivement extrait une valeur du CCTP, voir extractMetadata), puis la
+// fiche "infos marché" — toujours les rubriques que l'app connaît elle-même (candidat,
+// interlocuteur), les autres seulement si extraites.
+function buildCoverPage(
+  content: MemoireContent,
+  metadata: MemoireMetadata,
+  interlocuteur: string,
+  corpsDeMetier: string
+): (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] {
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
+  children.push(new Paragraph({ text: '', spacing: { after: 400 } }));
+
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: noBorders(),
+      rows: [
+        new TableRow({
+          cantSplit: true,
+          children: [
+            new TableCell({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE },
+              verticalAlign: VerticalAlign.CENTER,
+              margins: { top: 400, bottom: 300, left: 300, right: 300 },
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  children: [new TextRun({ text: COMPANY_NAME, bold: true, color: 'FFFFFF', size: 56 })],
+                }),
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 80 },
+                  children: [new TextRun({ text: COMPANY_ADDRESS, color: 'FFFFFF', size: 20 })],
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+
+  const subtitleLines: InstanceType<typeof Paragraph>[] = [];
+  const objet = metadata.objet || content.title;
+  if (objet) {
+    subtitleLines.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 160 },
+        children: [new TextRun({ text: objet, bold: true, color: '2E5C8A', size: 24 })],
+      })
+    );
+  }
+  if (metadata.client) {
+    subtitleLines.push(
+      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: metadata.client, bold: true, color: BRAND_BLUE, size: 24 })] })
+    );
+  }
+  if (metadata.lot) {
+    subtitleLines.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 80 },
+        children: [new TextRun({ text: metadata.lot.toUpperCase(), bold: true, color: '2E7D6B', size: 20 })],
+      })
+    );
+  }
+  if (metadata.perimetre) {
+    subtitleLines.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 80, after: 160 },
+        children: [new TextRun({ text: metadata.perimetre, color: ACCENT_BLUE, size: 20 })],
+      })
+    );
+  }
+  if (subtitleLines.length === 0) {
+    subtitleLines.push(
+      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `Interlocuteur : ${interlocuteur}`, color: BRAND_BLUE, size: 22 })] })
+    );
+  }
+
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: noBorders(),
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE_PALE },
+              margins: { top: 200, bottom: 200, left: 300, right: 300 },
+              children: subtitleLines,
+            }),
+          ],
+        }),
+      ],
+    })
+  );
+  children.push(new Paragraph({ text: '', spacing: { after: 300 } }));
+
+  const infoRows: string[][] = [];
+  if (metadata.pouvoirAdjudicateur) infoRows.push(['Pouvoir adjudicateur', metadata.pouvoirAdjudicateur]);
+  if (metadata.lot) infoRows.push(['Lot concerné', metadata.lot]);
+  else infoRows.push(['Corps de métier concerné', corpsDeMetier]);
+  if (metadata.montantMaximum) infoRows.push(['Montant maximum', metadata.montantMaximum]);
+  if (metadata.perimetre) infoRows.push(['Périmètre', metadata.perimetre]);
+  if (metadata.duree) infoRows.push(['Durée', metadata.duree]);
+  infoRows.push(['Candidat', `${COMPANY_NAME} – ${COMPANY_ADDRESS}`]);
+  infoRows.push(['Interlocuteur unique', interlocuteur]);
+
+  children.push(buildKeyValueTable(infoRows));
   children.push(new Paragraph({ children: [new PageBreak()] }));
+  return children;
+}
+
+async function buildDocx(
+  content: MemoireContent,
+  metadata: MemoireMetadata,
+  interlocuteur: string,
+  corpsDeMetier: string
+): Promise<Uint8Array> {
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
+
+  children.push(...buildCoverPage(content, metadata, interlocuteur, corpsDeMetier));
 
   children.push(new Paragraph({ text: 'Sommaire', heading: HeadingLevel.HEADING_1 }));
   children.push(
     new TableOfContents('Sommaire (clic droit → "Mettre à jour les champs" à l’ouverture)', {
       hyperlink: true,
-      headingStyleRange: '1-3',
+      headingStyleRange: '1-2',
     })
   );
   children.push(new Paragraph({ children: [new PageBreak()] }));
 
+  let sectionCounter = 0;
+  let subCounter = 0;
+  let calloutIndex = 0;
+
   for (const section of content.sections) {
-    children.push(new Paragraph({ text: section.heading, heading: headingLevelFor(section.level) }));
-    for (const block of section.content ?? []) {
-      if (block.type === 'table' && block.rows?.length) {
-        children.push(buildTable(block.rows));
-        children.push(new Paragraph({ text: '', spacing: { after: 120 } }));
-        continue;
-      }
-      const runs = parseInlineRuns(block.text ?? '');
-      if (block.type === 'bullet') {
-        children.push(new Paragraph({ children: runs, bullet: { level: 0 } }));
-      } else if (block.type === 'numbered') {
-        children.push(
-          new Paragraph({ children: runs, numbering: { reference: NUMBERED_LIST_REFERENCE, level: 0 } })
-        );
-      } else {
-        children.push(new Paragraph({ children: runs }));
-      }
+    const cleanHeading = section.heading.replace(/^\d+(\.\d+)*[.)]?\s*/, '').trim();
+    if (section.level <= 2) {
+      sectionCounter++;
+      subCounter = 0;
+      calloutIndex = 0;
+      children.push(buildSectionBanner(sectionCounter, cleanHeading, section.points));
+      children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
+      pushContentBlocks(section.content, children);
+    } else if (section.level === 3) {
+      subCounter++;
+      children.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          children: [new TextRun({ text: `${sectionCounter}.${subCounter}  ${cleanHeading}`, bold: true, color: BRAND_BLUE, size: 25 })],
+          spacing: { before: 280, after: 120 },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT, space: 4 } },
+        })
+      );
+      pushContentBlocks(section.content, children);
+    } else {
+      calloutIndex++;
+      children.push(buildCalloutBox(cleanHeading, section.content, calloutIndex));
+      children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
     }
   }
 
@@ -457,6 +868,18 @@ async function buildDocx(
         {
           reference: NUMBERED_LIST_REFERENCE,
           levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.START }],
+        },
+        {
+          reference: BULLET_LIST_REFERENCE,
+          levels: [
+            {
+              level: 0,
+              format: 'bullet',
+              text: '▸',
+              alignment: AlignmentType.START,
+              style: { paragraph: { indent: { left: 400, hanging: 300 } } },
+            },
+          ],
         },
       ],
     },
@@ -505,21 +928,8 @@ async function buildDocx(
     },
     sections: [
       {
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                border: { top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT, space: 4 } },
-                children: [
-                  new TextRun({ children: [PageNumber.CURRENT], color: BRAND_BLUE, size: 18 }),
-                  new TextRun({ text: ' / ', color: BRAND_BLUE, size: 18 }),
-                  new TextRun({ children: [PageNumber.TOTAL_PAGES], color: BRAND_BLUE, size: 18 }),
-                ],
-              }),
-            ],
-          }),
-        },
+        headers: { default: buildRunningHeader(metadata, corpsDeMetier) },
+        footers: { default: buildFooter(metadata, corpsDeMetier) },
         children,
       },
     ],
@@ -646,8 +1056,8 @@ ${projectDocsSection}
 
 Rédige maintenant le mémoire technique complet, directement en Markdown (voir le format attendu dans les instructions système). Développe chaque thématique en profondeur (plusieurs paragraphes/points par section, en t'appuyant sur des passages précis du CCTP ci-dessus) — pas de section réduite à une ou deux phrases. Tu as toute la place nécessaire (aucune limite de longueur pratique) : ne t'arrête pas dès qu'un point minimal est couvert, traite chaque thématique avec le niveau de détail et d'exhaustivité que tu produirais si on te demandait, tour après tour dans une conversation, d'approfondir chaque partie une à une.`;
 
-    const { content, usage } = await callClaude(systemPrompt, userPrompt);
-    const docxBytes = await buildDocx(content, interlocuteur, corpsDeMetier);
+    const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt);
+    const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier);
 
     const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
     const { error: uploadError } = await supabase.storage
