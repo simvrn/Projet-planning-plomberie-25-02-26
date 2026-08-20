@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../ui/Button';
-import { saveAdminConfig } from '../../lib/memoire/memoireApi';
+import { saveAdminConfig, companyInfoFieldsFrom } from '../../lib/memoire/memoireApi';
 import type { CompanyConfig, CorpsDeMetier } from '../../types/memoire';
 
 interface SystemPromptSectionProps {
@@ -22,14 +22,7 @@ export function SystemPromptSection({ password, corpsDeMetier, config, onSaved }
       await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt,
         structurePrompt: config.structure_prompt,
-        presentation: config.presentation,
-        moyensMateriels: config.moyens_materiels,
-        organisationChantier: config.organisation_chantier,
-        gestionAstreintes: config.gestion_astreintes,
-        gestionMilieuOccupe: config.gestion_milieu_occupe,
-        methodes: config.methodes,
-        certifications: config.certifications,
-        rse: config.rse,
+        ...companyInfoFieldsFrom(config),
       });
       onSaved();
     } catch (err) {

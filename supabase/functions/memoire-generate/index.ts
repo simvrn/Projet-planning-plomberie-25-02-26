@@ -48,6 +48,30 @@ const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Ser
 // Les thématiques ne sont plus restreintes à cette liste côté serveur : l'utilisateur peut
 // ajouter des thématiques libres non prévues (voir StartForm.tsx côté client).
 
+// Champs de memoire_company_config : [colonne snake_case, libellé lisible pour le prompt].
+const COMPANY_CONFIG_FIELDS: [string, string][] = [
+  ['presentation', 'Présentation'],
+  ['equipe_organigramme', 'Équipe et organigramme (qui fait quoi)'],
+  ['methodes', 'Méthode de travail (comment on suit les interventions)'],
+  ['moyens_materiels', 'Matériel (outils, protections)'],
+  ['informatique_logiciels', 'Informatique et logiciels'],
+  ['stock_fournisseurs', 'Stock et fournisseurs (logistique)'],
+  ['organisation_chantier', 'Organisation sur le chantier'],
+  ['environnement', 'Environnement (déchets, énergie, mobilité)'],
+  ['choix_fournisseurs', 'Choix des fournisseurs'],
+  ['insertion_professionnelle', 'Insertion professionnelle (aide à l\'emploi)'],
+  ['taille_entreprise_encadrement', 'Taille de l\'entreprise et encadrement'],
+  ['references_chantiers', 'Références (chantiers déjà faits)'],
+  ['securite_generale', 'Sécurité générale'],
+  ['amiante', 'Amiante (procédure à part)'],
+  ['qualite_autocontrole', 'Qualité et autocontrôle'],
+  ['relation_locataires', 'Relation avec les locataires'],
+  ['gestion_astreintes', 'Gestion des astreintes'],
+  ['gestion_milieu_occupe', 'Gestion en milieu occupé'],
+  ['certifications', 'Certifications'],
+  ['rse', 'RSE'],
+];
+
 const DEFAULT_SYSTEM_PROMPT = `Tu es un rédacteur technique expérimenté d'une entreprise du bâtiment (électricité, interphonie, plomberie, serrurerie) qui répond à des appels d'offres publics et privés.
 Tu rédiges des mémoires techniques précis, structurés, professionnels et adaptés au projet, en t'appuyant sur les documents du projet (CCTP, plans, cahier des charges) et sur les informations de l'entreprise fournies.
 Tu ne dois jamais inventer d'informations sur l'entreprise qui ne figurent pas dans les informations fournies. Pour la partie spécifique au projet, tu t'appuies exclusivement sur les documents du projet fournis — les mémoires de référence ne servent qu'à calibrer le ton, le style et la structure.`;
@@ -235,9 +259,15 @@ Deno.serve(async (req) => {
   if (insertGenError) return json({ error: insertGenError.message }, 500);
 
   try {
+    const configSelectColumns = [
+      'system_prompt',
+      'structure_prompt',
+      ...COMPANY_CONFIG_FIELDS.map(([col]) => col),
+    ].join(', ');
+
     const { data: config, error: configError } = await supabase
       .from('memoire_company_config')
-      .select('system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, rse')
+      .select(configSelectColumns)
       .eq('corps_de_metier', corpsDeMetier)
       .single();
     if (configError) throw new Error(configError.message);
@@ -262,36 +292,20 @@ Deno.serve(async (req) => {
       ? `\n\n# Structure et mise en page imposées\nRespecte STRICTEMENT la structure suivante pour tous les mémoires de ce corps de métier (ordre des sections, format des titres...) :\n${config.structure_prompt.trim()}`
       : '';
 
+    const configRecord = config as unknown as Record<string, string>;
+
+    const companyInfoSections = [
+      `## Moyens humains (pour ${interlocuteur})\n${moyensHumains.contenu || '(non renseigné)'}`,
+      ...COMPANY_CONFIG_FIELDS.map(
+        ([col, label]) => `## ${label}\n${configRecord[col] || '(non renseigné)'}`
+      ),
+    ].join('\n\n');
+
     const systemPrompt = `${config.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT}${structureSection}
 
 # Informations sur l'entreprise
 
-## Présentation
-${config.presentation || '(non renseigné)'}
-
-## Moyens humains (pour ${interlocuteur})
-${moyensHumains.contenu || '(non renseigné)'}
-
-## Moyens matériels
-${config.moyens_materiels || '(non renseigné)'}
-
-## Organisation sur le chantier
-${config.organisation_chantier || '(non renseigné)'}
-
-## Gestion des astreintes
-${config.gestion_astreintes || '(non renseigné)'}
-
-## Gestion en milieu occupé
-${config.gestion_milieu_occupe || '(non renseigné)'}
-
-## Méthodes
-${config.methodes || '(non renseigné)'}
-
-## Certifications
-${config.certifications || '(non renseigné)'}
-
-## RSE
-${config.rse || '(non renseigné)'}`;
+${companyInfoSections}`;
 
     const referenceSection = referenceDocs.length
       ? referenceDocs

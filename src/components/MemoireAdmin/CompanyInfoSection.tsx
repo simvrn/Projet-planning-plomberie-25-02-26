@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../ui/Button';
-import { saveAdminConfig } from '../../lib/memoire/memoireApi';
+import { saveAdminConfig, type CompanyInfoFields } from '../../lib/memoire/memoireApi';
 import type { CompanyConfig, CorpsDeMetier } from '../../types/memoire';
 
 interface CompanyInfoSectionProps {
@@ -13,15 +13,34 @@ interface CompanyInfoSectionProps {
 const textareaClassName =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]';
 
+// [clé dans CompanyConfig, clé attendue par saveAdminConfig, libellé affiché]
+const FIELDS: [keyof CompanyConfig, string, string][] = [
+  ['presentation', 'presentation', 'Présentation'],
+  ['equipe_organigramme', 'equipeOrganigramme', 'Équipe et organigramme (qui fait quoi)'],
+  ['taille_entreprise_encadrement', 'tailleEntrepriseEncadrement', "Taille de l'entreprise et encadrement"],
+  ['methodes', 'methodes', 'Méthode de travail (comment on suit les interventions)'],
+  ['moyens_materiels', 'moyensMateriels', 'Matériel (outils, protections)'],
+  ['informatique_logiciels', 'informatiqueLogiciels', 'Informatique et logiciels'],
+  ['stock_fournisseurs', 'stockFournisseurs', 'Stock et fournisseurs (logistique)'],
+  ['choix_fournisseurs', 'choixFournisseurs', 'Choix des fournisseurs'],
+  ['organisation_chantier', 'organisationChantier', 'Organisation sur le chantier'],
+  ['gestion_astreintes', 'gestionAstreintes', 'Gestion des astreintes'],
+  ['gestion_milieu_occupe', 'gestionMilieuOccupe', 'Gestion en milieu occupé'],
+  ['relation_locataires', 'relationLocataires', 'Relation avec les locataires'],
+  ['securite_generale', 'securiteGenerale', 'Sécurité générale'],
+  ['amiante', 'amiante', 'Amiante (procédure à part)'],
+  ['qualite_autocontrole', 'qualiteAutocontrole', 'Qualité et autocontrôle'],
+  ['references_chantiers', 'referencesChantiers', 'Références (chantiers déjà faits)'],
+  ['certifications', 'certifications', 'Certifications'],
+  ['insertion_professionnelle', 'insertionProfessionnelle', "Insertion professionnelle (aide à l'emploi)"],
+  ['environnement', 'environnement', 'Environnement (déchets, énergie, mobilité)'],
+  ['rse', 'rse', 'RSE'],
+];
+
 export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }: CompanyInfoSectionProps) {
-  const [presentation, setPresentation] = useState(config.presentation);
-  const [moyensMateriels, setMoyensMateriels] = useState(config.moyens_materiels);
-  const [organisationChantier, setOrganisationChantier] = useState(config.organisation_chantier);
-  const [gestionAstreintes, setGestionAstreintes] = useState(config.gestion_astreintes);
-  const [gestionMilieuOccupe, setGestionMilieuOccupe] = useState(config.gestion_milieu_occupe);
-  const [methodes, setMethodes] = useState(config.methodes);
-  const [certifications, setCertifications] = useState(config.certifications);
-  const [rse, setRse] = useState(config.rse);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(FIELDS.map(([key]) => [key, config[key]]))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,17 +48,13 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
     setSaving(true);
     setError(null);
     try {
+      const fields = Object.fromEntries(
+        FIELDS.map(([key, paramKey]) => [paramKey, values[key] ?? ''])
+      ) as unknown as CompanyInfoFields;
       await saveAdminConfig(password, corpsDeMetier, {
         systemPrompt: config.system_prompt,
         structurePrompt: config.structure_prompt,
-        presentation,
-        moyensMateriels,
-        organisationChantier,
-        gestionAstreintes,
-        gestionMilieuOccupe,
-        methodes,
-        certifications,
-        rse,
+        ...fields,
       });
       onSaved();
     } catch (err) {
@@ -56,65 +71,16 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
         Ces informations sont injectées dans chaque mémoire technique généré pour ce corps de métier.
       </p>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Présentation</label>
-        <textarea className={textareaClassName} value={presentation} onChange={(e) => setPresentation(e.target.value)} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Moyens matériels</label>
-        <textarea
-          className={textareaClassName}
-          value={moyensMateriels}
-          onChange={(e) => setMoyensMateriels(e.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Organisation sur le chantier</label>
-        <textarea
-          className={textareaClassName}
-          value={organisationChantier}
-          onChange={(e) => setOrganisationChantier(e.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gestion des astreintes</label>
-        <textarea
-          className={textareaClassName}
-          value={gestionAstreintes}
-          onChange={(e) => setGestionAstreintes(e.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gestion en milieu occupé</label>
-        <textarea
-          className={textareaClassName}
-          value={gestionMilieuOccupe}
-          onChange={(e) => setGestionMilieuOccupe(e.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Méthodes</label>
-        <textarea className={textareaClassName} value={methodes} onChange={(e) => setMethodes(e.target.value)} />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Certifications</label>
-        <textarea
-          className={textareaClassName}
-          value={certifications}
-          onChange={(e) => setCertifications(e.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">RSE</label>
-        <textarea className={textareaClassName} value={rse} onChange={(e) => setRse(e.target.value)} />
-      </div>
+      {FIELDS.map(([key, , label]) => (
+        <div key={key}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+          <textarea
+            className={textareaClassName}
+            value={values[key] ?? ''}
+            onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+          />
+        </div>
+      ))}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

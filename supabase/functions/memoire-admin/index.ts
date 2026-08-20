@@ -28,6 +28,31 @@ const supabase = createClient(
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
 const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 
+// Champs de memoire_company_config : [clé camelCase reçue du client, colonne snake_case en base].
+// system_prompt et structure_prompt sont gérés à part (prompts, pas des infos entreprise).
+const COMPANY_CONFIG_FIELDS: [string, string][] = [
+  ['presentation', 'presentation'],
+  ['equipeOrganigramme', 'equipe_organigramme'],
+  ['methodes', 'methodes'],
+  ['moyensMateriels', 'moyens_materiels'],
+  ['informatiqueLogiciels', 'informatique_logiciels'],
+  ['stockFournisseurs', 'stock_fournisseurs'],
+  ['organisationChantier', 'organisation_chantier'],
+  ['environnement', 'environnement'],
+  ['choixFournisseurs', 'choix_fournisseurs'],
+  ['insertionProfessionnelle', 'insertion_professionnelle'],
+  ['tailleEntrepriseEncadrement', 'taille_entreprise_encadrement'],
+  ['referencesChantiers', 'references_chantiers'],
+  ['securiteGenerale', 'securite_generale'],
+  ['amiante', 'amiante'],
+  ['qualiteAutocontrole', 'qualite_autocontrole'],
+  ['relationLocataires', 'relation_locataires'],
+  ['gestionAstreintes', 'gestion_astreintes'],
+  ['gestionMilieuOccupe', 'gestion_milieu_occupe'],
+  ['certifications', 'certifications'],
+  ['rse', 'rse'],
+];
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée' }, 405);
@@ -63,9 +88,17 @@ Deno.serve(async (req) => {
           return json({ error: 'corpsDeMetier invalide' }, 400);
         }
 
+        const selectColumns = [
+          'corps_de_metier',
+          'system_prompt',
+          'structure_prompt',
+          ...COMPANY_CONFIG_FIELDS.map(([, col]) => col),
+          'updated_at',
+        ].join(', ');
+
         const { data: config, error: configError } = await supabase
           .from('memoire_company_config')
-          .select('corps_de_metier, system_prompt, structure_prompt, presentation, moyens_materiels, organisation_chantier, gestion_astreintes, gestion_milieu_occupe, methodes, certifications, rse, updated_at')
+          .select(selectColumns)
           .eq('corps_de_metier', corpsDeMetier)
           .single();
         if (configError) return json({ error: configError.message }, 500);
@@ -91,50 +124,27 @@ Deno.serve(async (req) => {
       }
 
       case 'save-config': {
-        const {
-          corpsDeMetier,
-          systemPrompt,
-          structurePrompt,
-          presentation,
-          moyensMateriels,
-          organisationChantier,
-          gestionAstreintes,
-          gestionMilieuOccupe,
-          methodes,
-          certifications,
-          rse,
-        } = body as {
+        const { corpsDeMetier, systemPrompt, structurePrompt } = body as {
           corpsDeMetier?: string;
           systemPrompt?: string;
           structurePrompt?: string;
-          presentation?: string;
-          moyensMateriels?: string;
-          organisationChantier?: string;
-          gestionAstreintes?: string;
-          gestionMilieuOccupe?: string;
-          methodes?: string;
-          certifications?: string;
-          rse?: string;
         };
         if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
           return json({ error: 'corpsDeMetier invalide' }, 400);
         }
 
+        const updatePayload: Record<string, string> = {
+          system_prompt: systemPrompt ?? '',
+          structure_prompt: structurePrompt ?? '',
+          updated_at: new Date().toISOString(),
+        };
+        for (const [key, column] of COMPANY_CONFIG_FIELDS) {
+          updatePayload[column] = (body as Record<string, unknown>)[key] as string ?? '';
+        }
+
         const { error: updateError } = await supabase
           .from('memoire_company_config')
-          .update({
-            system_prompt: systemPrompt ?? '',
-            structure_prompt: structurePrompt ?? '',
-            presentation: presentation ?? '',
-            moyens_materiels: moyensMateriels ?? '',
-            organisation_chantier: organisationChantier ?? '',
-            gestion_astreintes: gestionAstreintes ?? '',
-            gestion_milieu_occupe: gestionMilieuOccupe ?? '',
-            methodes: methodes ?? '',
-            certifications: certifications ?? '',
-            rse: rse ?? '',
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('corps_de_metier', corpsDeMetier);
         if (updateError) return json({ error: updateError.message }, 500);
 

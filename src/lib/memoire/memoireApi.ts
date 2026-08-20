@@ -80,21 +80,66 @@ export async function getAdminConfig(
   return callMemoireAdmin('get-config', password, { corpsDeMetier });
 }
 
+export interface CompanyInfoFields {
+  presentation: string;
+  equipeOrganigramme: string;
+  methodes: string;
+  moyensMateriels: string;
+  informatiqueLogiciels: string;
+  stockFournisseurs: string;
+  organisationChantier: string;
+  environnement: string;
+  choixFournisseurs: string;
+  insertionProfessionnelle: string;
+  tailleEntrepriseEncadrement: string;
+  referencesChantiers: string;
+  securiteGenerale: string;
+  amiante: string;
+  qualiteAutocontrole: string;
+  relationLocataires: string;
+  gestionAstreintes: string;
+  gestionMilieuOccupe: string;
+  certifications: string;
+  rse: string;
+}
+
+/**
+ * Reprend les infos entreprise déjà chargées telles quelles, pour les sections (Prompt système,
+ * Structure) qui ne modifient qu'un seul champ mais doivent renvoyer l'ensemble à save-config
+ * (sans quoi les autres champs seraient réinitialisés).
+ */
+export function companyInfoFieldsFrom(config: CompanyConfig): CompanyInfoFields {
+  return {
+    presentation: config.presentation,
+    equipeOrganigramme: config.equipe_organigramme,
+    methodes: config.methodes,
+    moyensMateriels: config.moyens_materiels,
+    informatiqueLogiciels: config.informatique_logiciels,
+    stockFournisseurs: config.stock_fournisseurs,
+    organisationChantier: config.organisation_chantier,
+    environnement: config.environnement,
+    choixFournisseurs: config.choix_fournisseurs,
+    insertionProfessionnelle: config.insertion_professionnelle,
+    tailleEntrepriseEncadrement: config.taille_entreprise_encadrement,
+    referencesChantiers: config.references_chantiers,
+    securiteGenerale: config.securite_generale,
+    amiante: config.amiante,
+    qualiteAutocontrole: config.qualite_autocontrole,
+    relationLocataires: config.relation_locataires,
+    gestionAstreintes: config.gestion_astreintes,
+    gestionMilieuOccupe: config.gestion_milieu_occupe,
+    certifications: config.certifications,
+    rse: config.rse,
+  };
+}
+
 export async function saveAdminConfig(
   password: string,
   corpsDeMetier: CorpsDeMetier,
   fields: {
     systemPrompt: string;
     structurePrompt: string;
-    presentation: string;
-    moyensMateriels: string;
-    organisationChantier: string;
-    gestionAstreintes: string;
-    gestionMilieuOccupe: string;
-    methodes: string;
-    certifications: string;
-    rse: string;
-  }
+  } & CompanyInfoFields
 ): Promise<void> {
   await callMemoireAdmin('save-config', password, { corpsDeMetier, ...fields });
 }
