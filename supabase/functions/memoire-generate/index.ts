@@ -21,9 +21,23 @@ import {
   AlignmentType,
   PageBreak,
   TableOfContents,
+  BorderStyle,
+  ShadingType,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  VerticalAlign,
+  Footer,
+  PageNumber,
 } from 'npm:docx@9';
 
 const NUMBERED_LIST_REFERENCE = 'memoire-numbered-list';
+
+// Charte graphique du document généré : bleu corporate + gris clair pour les encadrés/tableaux.
+const BRAND_BLUE = '1F4E79';
+const BRAND_BLUE_LIGHT = 'DCE6F1';
+const BRAND_BLUE_PALE = 'EEF3FA';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -93,8 +107,9 @@ interface ProjectDoc {
 }
 
 interface MemoireContentBlock {
-  type: 'paragraph' | 'bullet' | 'numbered';
+  type: 'paragraph' | 'bullet' | 'numbered' | 'table';
   text: string;
+  rows?: string[][];
 }
 
 interface MemoireSection {
@@ -133,6 +148,22 @@ interface TokenUsage {
 // site — pas de schéma JSON forcé) en structure exploitable par buildDocx(). Un tool call forcé
 // pousse le modèle en mode "remplir un formulaire" et produit un texte bien plus court/pauvre
 // qu'une rédaction libre : on laisse donc Claude écrire librement, puis on parse.
+function isTableRow(line: string): boolean {
+  return /^\|.*\|$/.test(line);
+}
+
+function isTableSeparatorRow(line: string): boolean {
+  return /^\|[\s:|-]+\|$/.test(line);
+}
+
+function parseTableRow(line: string): string[] {
+  return line
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim().replace(/\*\*/g, ''));
+}
+
 function parseMarkdownToMemoire(markdown: string): MemoireContent {
   const lines = markdown.split('\n');
   let title = 'Mémoire technique';
@@ -140,8 +171,8 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
   const sections: MemoireSection[] = [];
   let currentSection: MemoireSection | null = null;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
     if (!line) continue;
 
     const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
@@ -161,6 +192,18 @@ function parseMarkdownToMemoire(markdown: string): MemoireContent {
     if (!currentSection) {
       currentSection = { heading: title, level: 1, content: [] };
       sections.push(currentSection);
+    }
+
+    if (isTableRow(line)) {
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i].trim())) {
+        const rowLine = lines[i].trim();
+        if (!isTableSeparatorRow(rowLine)) rows.push(parseTableRow(rowLine));
+        i++;
+      }
+      i--; // le for...i++ ré-avancera d'un cran
+      if (rows.length > 0) currentSection.content.push({ type: 'table', text: '', rows });
+      continue;
     }
 
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
@@ -248,24 +291,80 @@ function parseInlineRuns(text: string): InstanceType<typeof TextRun>[] {
   );
 }
 
+function buildTable(rows: string[][]): InstanceType<typeof Table> {
+  const columnCount = Math.max(...rows.map((r) => r.length));
+  const tableRows = rows.map((row, rowIndex) => {
+    const isHeader = rowIndex === 0;
+    const cells = Array.from({ length: columnCount }, (_, colIndex) => {
+      const cellText = row[colIndex] ?? '';
+      return new TableCell({
+        width: { size: Math.floor(100 / columnCount), type: WidthType.PERCENTAGE },
+        shading: isHeader ? { type: ShadingType.CLEAR, fill: BRAND_BLUE } : undefined,
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: cellText,
+                bold: isHeader,
+                color: isHeader ? 'FFFFFF' : undefined,
+              }),
+            ],
+          }),
+        ],
+      });
+    });
+    return new TableRow({ children: cells });
+  });
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: tableRows,
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+      left: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+      right: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT },
+    },
+  });
+}
+
 async function buildDocx(
   content: MemoireContent,
   interlocuteur: string,
   corpsDeMetier: string
 ): Promise<Uint8Array> {
-  const children: InstanceType<typeof Paragraph>[] = [];
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
 
-  children.push(new Paragraph({ text: content.title, heading: HeadingLevel.TITLE }));
+  children.push(
+    new Paragraph({ text: content.title, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER })
+  );
+  children.push(new Paragraph({ text: '', spacing: { after: 300 } }));
   children.push(
     new Paragraph({
-      text: `${corpsDeMetier} — Interlocuteur : ${interlocuteur}`,
       alignment: AlignmentType.CENTER,
+      shading: { type: ShadingType.CLEAR, fill: BRAND_BLUE_PALE },
+      border: {
+        top: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
+        bottom: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
+        left: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
+        right: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE },
+      },
+      spacing: { before: 200, after: 200 },
+      children: [
+        new TextRun({ text: corpsDeMetier, bold: true, color: BRAND_BLUE, size: 28 }),
+        new TextRun({ text: `  —  Interlocuteur : ${interlocuteur}`, color: BRAND_BLUE, size: 24 }),
+      ],
     })
   );
   children.push(
     new Paragraph({
       text: new Date().toLocaleDateString('fr-FR'),
       alignment: AlignmentType.CENTER,
+      spacing: { before: 200 },
     })
   );
   children.push(new Paragraph({ children: [new PageBreak()] }));
@@ -282,6 +381,11 @@ async function buildDocx(
   for (const section of content.sections) {
     children.push(new Paragraph({ text: section.heading, heading: headingLevelFor(section.level) }));
     for (const block of section.content ?? []) {
+      if (block.type === 'table' && block.rows?.length) {
+        children.push(buildTable(block.rows));
+        children.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+        continue;
+      }
       const runs = parseInlineRuns(block.text ?? '');
       if (block.type === 'bullet') {
         children.push(new Paragraph({ children: runs, bullet: { level: 0 } }));
@@ -304,7 +408,69 @@ async function buildDocx(
         },
       ],
     },
-    sections: [{ children }],
+    styles: {
+      paragraphStyles: [
+        {
+          id: 'Title',
+          name: 'Title',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { size: 56, bold: true, color: BRAND_BLUE, font: 'Calibri' },
+          paragraph: { spacing: { after: 120 } },
+        },
+        {
+          id: 'Heading1',
+          name: 'Heading 1',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { size: 30, bold: true, color: BRAND_BLUE, font: 'Calibri' },
+          paragraph: {
+            spacing: { before: 360, after: 160 },
+            border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: BRAND_BLUE, space: 4 } },
+          },
+        },
+        {
+          id: 'Heading2',
+          name: 'Heading 2',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { size: 25, bold: true, color: BRAND_BLUE, font: 'Calibri' },
+          paragraph: { spacing: { before: 280, after: 120 } },
+        },
+        {
+          id: 'Heading3',
+          name: 'Heading 3',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { size: 22, bold: true, color: '2E5C8A', font: 'Calibri' },
+          paragraph: { spacing: { before: 200, after: 100 } },
+        },
+      ],
+    },
+    sections: [
+      {
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                border: { top: { style: BorderStyle.SINGLE, size: 4, color: BRAND_BLUE_LIGHT, space: 4 } },
+                children: [
+                  new TextRun({ children: [PageNumber.CURRENT], color: BRAND_BLUE, size: 18 }),
+                  new TextRun({ text: ' / ', color: BRAND_BLUE, size: 18 }),
+                  new TextRun({ children: [PageNumber.TOTAL_PAGES], color: BRAND_BLUE, size: 18 }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children,
+      },
+    ],
   });
   const buffer = await Packer.toBuffer(doc);
   return new Uint8Array(buffer);
