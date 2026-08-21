@@ -112,15 +112,18 @@ Deno.serve(async (req) => {
 
         const { data: moyensHumainsRows, error: moyensError } = await supabase
           .from('memoire_moyens_humains')
-          .select('interlocuteur, contenu')
+          .select('interlocuteur, contenu, techniciens')
           .eq('corps_de_metier', corpsDeMetier);
         if (moyensError) return json({ error: moyensError.message }, 500);
 
         const moyensHumainsParInterlocuteur = Object.fromEntries(
           (moyensHumainsRows ?? []).map((row) => [row.interlocuteur, row.contenu])
         );
+        const techniciensParInterlocuteur = Object.fromEntries(
+          (moyensHumainsRows ?? []).map((row) => [row.interlocuteur, row.techniciens ?? []])
+        );
 
-        return json({ config, referenceDocs, moyensHumainsParInterlocuteur });
+        return json({ config, referenceDocs, moyensHumainsParInterlocuteur, techniciensParInterlocuteur });
       }
 
       case 'save-config': {
@@ -152,16 +155,20 @@ Deno.serve(async (req) => {
       }
 
       case 'save-moyens-humains': {
-        const { corpsDeMetier, interlocuteur, contenu } = body as {
+        const { corpsDeMetier, interlocuteur, contenu, techniciens } = body as {
           corpsDeMetier?: string;
           interlocuteur?: string;
           contenu?: string;
+          techniciens?: string[];
         };
         if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
           return json({ error: 'corpsDeMetier invalide' }, 400);
         }
         if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
           return json({ error: 'interlocuteur invalide' }, 400);
+        }
+        if (techniciens !== undefined && !Array.isArray(techniciens)) {
+          return json({ error: 'techniciens invalide : tableau attendu' }, 400);
         }
 
         const { error: upsertError } = await supabase
@@ -171,6 +178,7 @@ Deno.serve(async (req) => {
               corps_de_metier: corpsDeMetier,
               interlocuteur,
               contenu: contenu ?? '',
+              techniciens: (techniciens ?? []).filter((t) => typeof t === 'string' && t.trim().length > 0),
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'corps_de_metier,interlocuteur' }

@@ -25,6 +25,9 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
   const [moyensHumainsParInterlocuteur, setMoyensHumainsParInterlocuteur] = useState<
     Partial<Record<Interlocuteur, string>>
   >({});
+  const [techniciensParInterlocuteur, setTechniciensParInterlocuteur] = useState<
+    Partial<Record<Interlocuteur, string[]>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +40,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
       setConfig(result.config);
       setReferenceDocs(result.referenceDocs);
       setMoyensHumainsParInterlocuteur(result.moyensHumainsParInterlocuteur);
+      setTechniciensParInterlocuteur(result.techniciensParInterlocuteur);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -131,6 +135,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
                   password={adminPassword}
                   corpsDeMetier={corpsDeMetier}
                   moyensHumainsParInterlocuteur={moyensHumainsParInterlocuteur}
+                  techniciensParInterlocuteur={techniciensParInterlocuteur}
                   onSaved={refresh}
                 />
               )}

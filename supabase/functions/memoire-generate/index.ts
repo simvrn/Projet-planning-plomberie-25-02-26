@@ -1032,7 +1032,7 @@ async function gatherContext(corpsDeMetier: string, interlocuteur: string) {
 
   const { data: moyensHumains, error: moyensError } = await supabase
     .from('memoire_moyens_humains')
-    .select('contenu')
+    .select('contenu, techniciens')
     .eq('corps_de_metier', corpsDeMetier)
     .eq('interlocuteur', interlocuteur)
     .single();
@@ -1087,9 +1087,18 @@ ${buildOutputFormatInstructions(sectionIndex === 0)}`;
     ? companyInfoBlocks.join('\n\n')
     : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier.)";
 
-  const moyensHumainsSection = moyensHumains.contenu?.trim()
-    ? moyensHumains.contenu.trim()
-    : `(Aucun moyen humain renseigné dans l'espace admin pour ${interlocuteur} / ${corpsDeMetier}.)`;
+  // Sélection déterministe de l'équipe (interlocuteur + les N-1 premiers techniciens de sa liste,
+  // dans l'ordre de priorité défini dans l'espace admin) : calculée ici une seule fois, donc
+  // strictement identique dans tous les appels de section — élimine les contradictions de noms
+  // constatées quand ce choix était laissé à l'appréciation de chaque appel indépendant.
+  const techniciensList = (moyensHumains.techniciens ?? []) as string[];
+  const equipeSection = techniciensList.length
+    ? `Équipe précisément affectée à CE chantier (${nombrePersonnes} personne${nombrePersonnes > 1 ? 's' : ''} au total, décidée en amont) — utilise EXACTEMENT ces noms, dans cet ordre, et ne mentionne ni n'invente aucun autre nom propre pour désigner l'équipe terrain :\n${[interlocuteur, ...techniciensList.slice(0, Math.max(0, nombrePersonnes - 1))].map((n, i) => `${i + 1}. ${n}`).join('\n')}`
+    : null;
+
+  const moyensHumainsSection = [equipeSection, moyensHumains.contenu?.trim() || null]
+    .filter((s): s is string => Boolean(s))
+    .join('\n\n') || `(Aucun moyen humain renseigné dans l'espace admin pour ${interlocuteur} / ${corpsDeMetier}.)`;
 
   const referenceSection = referenceDocs.length
     ? referenceDocs
