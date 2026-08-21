@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { extractTextFromFile } from '../../lib/memoire/textExtraction';
-import { uploadProjectDoc, generateMemoireStepByStep } from '../../lib/memoire/memoireApi';
+import { uploadProjectDoc, uploadExtractedText, generateMemoireStepByStep } from '../../lib/memoire/memoireApi';
 import type { ProjectDocFile } from '../../types/memoire';
 import { PdfToTxtTool } from './PdfToTxtTool';
 
@@ -57,8 +57,11 @@ export function ProjectDocsUpload() {
       updateProjectDoc(doc.id, { status: 'extracting' });
       const extractedText = await extractTextFromFile(doc.file);
       updateProjectDoc(doc.id, { status: 'uploading', extractedText });
-      const { storagePath } = await uploadProjectDoc(doc.file);
-      updateProjectDoc(doc.id, { status: 'ready', storagePath });
+      const [{ storagePath }, { storagePath: textStoragePath }] = await Promise.all([
+        uploadProjectDoc(doc.file),
+        uploadExtractedText(extractedText),
+      ]);
+      updateProjectDoc(doc.id, { status: 'ready', storagePath, textStoragePath });
     } catch (err) {
       updateProjectDoc(doc.id, {
         status: 'error',
@@ -90,8 +93,7 @@ export function ProjectDocsUpload() {
           nombrePersonnes,
           projectDocs: projectDocs.map((d) => ({
             name: d.name,
-            storagePath: d.storagePath!,
-            extractedText: d.extractedText!,
+            textStoragePath: d.textStoragePath!,
           })),
         },
         ({ current, total, thematique }) => setGenerationProgress({ current, total, thematique })

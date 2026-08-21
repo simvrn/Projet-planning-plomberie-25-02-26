@@ -14,6 +14,7 @@ export interface ProjectDocFile {
   status: 'extracting' | 'uploading' | 'ready' | 'error';
   errorMessage?: string;
   storagePath?: string;
+  textStoragePath?: string;
 }
 
 export interface ReferenceDoc {

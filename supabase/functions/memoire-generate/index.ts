@@ -1,15 +1,11 @@
 // Edge Function "memoire-generate"
-// Reçoit le choix de l'étape 1 (interlocuteur + corps de métier) et le texte déjà extrait des
-// documents projet (l'extraction PDF/Word se fait côté navigateur, voir src/lib/memoire/textExtraction.ts).
+// Génère le mémoire thématique par thématique (voir plus bas pourquoi), via 3 actions : "start",
+// "generate-section" (une par thématique) et "finalize". Le texte des documents projet est extrait
+// côté navigateur (voir src/lib/memoire/textExtraction.ts) puis uploadé dans le bucket
+// memoire_project_docs ; les appels ne transportent que le chemin (textStoragePath), jamais le
+// texte en clair, pour rester légers quel que soit le nombre d'appels par thématique.
 // Croise avec la base entreprise (memoire_company_config + memoire_reference_docs), appelle Claude
 // pour produire un contenu structuré, puis génère un .docx et le stocke dans le bucket memoire_generated.
-//
-// Body attendu :
-// {
-//   interlocuteur: 'Vlad' | 'Stéphane' | 'Simon' | 'Eric' | 'Sébastien',
-//   corpsDeMetier: 'Électricité' | 'Interphonie' | 'Plomberie' | 'Serrurerie',
-//   projectDocs: { name: string, storagePath: string, extractedText: string }[]
-// }
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
@@ -159,10 +155,27 @@ Structure ton texte avec exactement 3 niveaux de titres Markdown, chacun ayant u
 Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.`;
 }
 
+// Le texte extrait (côté navigateur) d'un document projet peut faire plusieurs centaines de Ko :
+// il est uploadé dans le storage plutôt qu'envoyé en clair dans le corps JSON de chaque appel
+// (un appel par thématique), ce qui faisait échouer la requête sur certaines connexions.
 interface ProjectDoc {
   name: string;
-  storagePath?: string;
+  textStoragePath: string;
+}
+
+interface ResolvedProjectDoc {
+  name: string;
   extractedText: string;
+}
+
+async function fetchProjectDocsText(projectDocs: ProjectDoc[]): Promise<ResolvedProjectDoc[]> {
+  const resolved: ResolvedProjectDoc[] = [];
+  for (const doc of projectDocs) {
+    const { data, error } = await supabase.storage.from('memoire_project_docs').download(doc.textStoragePath);
+    if (error) throw new Error(`Impossible de lire le document projet "${doc.name}" : ${error.message}`);
+    resolved.push({ name: doc.name, extractedText: await data.text() });
+  }
+  return resolved;
 }
 
 interface MemoireContentBlock {
@@ -1043,7 +1056,7 @@ function buildSectionPrompts(
   interlocuteur: string,
   corpsDeMetier: string,
   nombrePersonnes: number,
-  projectDocs: ProjectDoc[],
+  projectDocs: ResolvedProjectDoc[],
   thematique: string,
   sectionIndex: number,
   totalSections: number
@@ -1238,13 +1251,16 @@ Deno.serve(async (req) => {
     }
 
     try {
-      const context = await gatherContext(corpsDeMetier, interlocuteur);
+      const [context, resolvedProjectDocs] = await Promise.all([
+        gatherContext(corpsDeMetier, interlocuteur),
+        fetchProjectDocsText(projectDocs),
+      ]);
       const { systemPrompt, userPrompt } = buildSectionPrompts(
         context,
         interlocuteur,
         corpsDeMetier,
         nombrePersonnes!,
-        projectDocs,
+        resolvedProjectDocs,
         thematique,
         sectionIndex!,
         totalSections!

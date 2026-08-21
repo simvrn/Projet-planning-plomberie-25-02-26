@@ -22,6 +22,23 @@ export async function uploadProjectDoc(file: File): Promise<{ storagePath: strin
   return { storagePath: data.path, publicUrl };
 }
 
+/**
+ * Upload le texte déjà extrait (côté navigateur) d'un document projet, dans le même bucket que le
+ * fichier original. Le texte d'un CCTP peut faire plusieurs centaines de Ko : l'envoyer en clair
+ * dans le corps JSON de CHAQUE appel à l'Edge Function (un appel par thématique) fait grossir la
+ * requête au point de la faire échouer sur certaines connexions ("Failed to send a request to the
+ * Edge Function"). En passant par le storage, chaque appel n'a plus qu'à transporter un chemin.
+ */
+export async function uploadExtractedText(text: string): Promise<{ storagePath: string }> {
+  const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
+  const { data, error } = await supabase.storage
+    .from('memoire_project_docs')
+    .upload(uniqueName, new Blob([text], { type: 'text/plain' }), { upsert: false });
+
+  if (error) throw new Error(`Erreur upload texte extrait : ${error.message}`);
+  return { storagePath: data.path };
+}
+
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -186,7 +203,7 @@ export interface GenerateMemoirePayload {
   corpsDeMetier: CorpsDeMetier;
   thematiques: string[];
   nombrePersonnes: number;
-  projectDocs: { name: string; storagePath: string; extractedText: string }[];
+  projectDocs: { name: string; textStoragePath: string }[];
 }
 
 export interface TokenUsage {
