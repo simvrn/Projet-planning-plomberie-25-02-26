@@ -16,7 +16,6 @@ import {
   HeadingLevel,
   AlignmentType,
   PageBreak,
-  TableOfContents,
   BorderStyle,
   ShadingType,
   Table,
@@ -550,7 +549,12 @@ function pushContentBlocks(
 // Bandeau plein-cadre numéroté d'une section principale (thématique), avec badge "N points" à
 // droite si le titre en portait un (voir extractPoints). Le titre garde le style Word "Heading 1"
 // (formatage écrasé par les TextRun explicites) pour rester capté par le Sommaire (TOC).
-function buildSectionBanner(number: number, heading: string, points: number | undefined): InstanceType<typeof Table> {
+function buildSectionBanner(
+  number: number,
+  heading: string,
+  points: number | undefined,
+  asHeading = true
+): InstanceType<typeof Table> {
   const numberCellWidth = 8;
   const pointsCellWidth = points ? 14 : 0;
   const headingCellWidth = 100 - numberCellWidth - pointsCellWidth;
@@ -575,7 +579,7 @@ function buildSectionBanner(number: number, heading: string, points: number | un
       margins: { top: 160, bottom: 160, left: 200, right: 200 },
       children: [
         new Paragraph({
-          heading: HeadingLevel.HEADING_1,
+          heading: asHeading ? HeadingLevel.HEADING_1 : undefined,
           children: [new TextRun({ text: heading, bold: true, color: 'FFFFFF', size: 24 })],
         }),
       ],
@@ -862,24 +866,23 @@ function buildCoverPage(
 
 // Page listant les questions/thématiques exactes traitées dans le mémoire, juste après la page
 // de garde : permet de vérifier d'un coup d'œil qu'aucune question n'a été oubliée ou déformée,
-// avant même de lire le contenu rédigé.
-function buildQuestionsPage(thematiques: string[]): (InstanceType<typeof Paragraph>)[] {
-  const children: InstanceType<typeof Paragraph>[] = [
+// avant même de lire le contenu rédigé. Reprend le style des bandeaux de section (même numéro,
+// même badge points) pour que cette page serve d'aperçu visuel cohérent de ce qui suit — sans
+// appliquer le style "Heading" (asHeading: false) pour ne pas dupliquer les entrées dans le plan
+// du document Word.
+function buildQuestionsPage(thematiques: string[]): (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] {
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [
     new Paragraph({ text: 'Questions traitées dans ce mémoire', heading: HeadingLevel.HEADING_1 }),
     new Paragraph({
       text: "Rappel des thématiques de l'appel d'offres auxquelles ce mémoire répond, une section par question ci-après.",
-      spacing: { after: 200 },
+      spacing: { after: 240 },
     }),
   ];
-  for (const thematique of thematiques) {
-    children.push(
-      new Paragraph({
-        children: [new TextRun(thematique)],
-        numbering: { reference: NUMBERED_LIST_REFERENCE, level: 0 },
-        spacing: { after: 100 },
-      })
-    );
-  }
+  thematiques.forEach((thematique, i) => {
+    const { heading, points } = extractPoints(thematique.trim());
+    children.push(buildSectionBanner(i + 1, heading, points, false));
+    children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
+  });
   children.push(new Paragraph({ children: [new PageBreak()] }));
   return children;
 }
@@ -895,15 +898,6 @@ async function buildDocx(
 
   children.push(...buildCoverPage(content, metadata, interlocuteur, corpsDeMetier));
   children.push(...buildQuestionsPage(thematiques));
-
-  children.push(new Paragraph({ text: 'Sommaire', heading: HeadingLevel.HEADING_1 }));
-  children.push(
-    new TableOfContents('Sommaire (clic droit → "Mettre à jour les champs" à l’ouverture)', {
-      hyperlink: true,
-      headingStyleRange: '1-2',
-    })
-  );
-  children.push(new Paragraph({ children: [new PageBreak()] }));
 
   let sectionCounter = 0;
   let subCounter = 0;
