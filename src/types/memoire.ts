@@ -6,34 +6,6 @@ export const INTERLOCUTEURS: Interlocuteur[] = ['Vlad', 'Stéphane', 'Simon', 'E
 
 export const CORPS_DE_METIER: CorpsDeMetier[] = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
 
-// Aligné sur les champs de l'espace admin (Infos entreprise) + Moyens humains (géré à part,
-// par interlocuteur). Utilisé pour la sélection manuelle et par l'analyse IA du pré-mémoire.
-export const THEMATIQUES = [
-  'Moyens humains',
-  'Présentation',
-  'Équipe et organigramme (qui fait quoi)',
-  'Méthode de travail (comment on suit les interventions)',
-  'Matériel (outils, protections)',
-  'Informatique et logiciels',
-  'Stock et fournisseurs (logistique)',
-  'Organisation sur le chantier',
-  'Environnement (déchets, énergie, mobilité)',
-  'Choix des fournisseurs',
-  "Insertion professionnelle (aide à l'emploi)",
-  "Taille de l'entreprise et encadrement",
-  'Références (chantiers déjà faits)',
-  'Sécurité générale',
-  'Amiante (procédure à part)',
-  'Qualité et autocontrôle',
-  'Relation avec les locataires',
-  'Gestion des astreintes',
-  'Gestion en milieu occupé',
-  'Certifications',
-  'RSE',
-] as const;
-
-export type Thematique = (typeof THEMATIQUES)[number];
-
 export interface ProjectDocFile {
   id: string;
   name: string;

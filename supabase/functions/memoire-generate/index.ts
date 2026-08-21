@@ -154,7 +154,7 @@ ${metaBlock}
 Structure ton texte avec exactement 3 niveaux de titres Markdown, chacun ayant un rôle précis dans la mise en page finale :
 - ## : le titre de la section (une seule fois, en tout début de ta réponse). Reporte le "(N points)" de la thématique s'il y en a un, à la toute fin du titre.
 - ### : les sous-parties numérotées à l'intérieur de la section (ex. présentation, données chiffrées, équipe dédiée...). C'est le niveau le plus utilisé pour découper le contenu.
-- #### : uniquement pour scinder occasionnellement une sous-partie ### en plusieurs blocs courts et bien distincts (ex. plusieurs domaines de compétences, plusieurs procédures) — reste exceptionnel, n'en abuse pas.
+- #### : réservé aux cas RARES où une sous-partie ### contient vraiment plusieurs blocs courts et hétérogènes à distinguer visuellement. Dans l'immense majorité des sous-parties ###, il ne faut AUCUN ####, juste des paragraphes/listes normaux. Si tu hésites à utiliser ####, ne l'utilise pas — une section entière peut très bien n'en avoir aucun.
 
 Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.`;
 }

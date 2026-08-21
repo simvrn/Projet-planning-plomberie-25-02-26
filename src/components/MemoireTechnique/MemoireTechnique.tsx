@@ -1,7 +1,7 @@
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { StartForm } from './StartForm';
-import { PreMemoireStep } from './PreMemoireStep';
+import { QuestionsStep } from './QuestionsStep';
 import { ProjectDocsUpload } from './ProjectDocsUpload';
 import { MemoireAdminGate } from '../MemoireAdmin/MemoireAdminGate';
 
@@ -67,7 +67,7 @@ export function MemoireTechnique() {
       </div>
 
       {step === 'start' && <StartForm />}
-      {step === 'premoire' && <PreMemoireStep />}
+      {step === 'premoire' && <QuestionsStep />}
       {step === 'upload' && <ProjectDocsUpload />}
       {step === 'result' && <ResultStep />}
     </div>
