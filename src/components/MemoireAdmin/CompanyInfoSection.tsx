@@ -82,11 +82,17 @@ export function CompanyInfoSection({ password, corpsDeMetier, config, onSaved }:
         </div>
       ))}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {/* Espace réservé en bas pour que le dernier champ ne soit jamais masqué par le bouton flottant */}
+      <div className="h-16" />
 
-      <Button onClick={handleSave} disabled={saving}>
-        {saving ? 'Enregistrement...' : 'Enregistrer'}
-      </Button>
+      <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 flex flex-col items-end gap-2">
+        {error && (
+          <p className="max-w-xs text-right text-sm text-red-600 bg-white px-2 py-1 rounded shadow">{error}</p>
+        )}
+        <Button onClick={handleSave} disabled={saving} className="shadow-lg">
+          {saving ? 'Enregistrement...' : 'Enregistrer'}
+        </Button>
+      </div>
     </div>
   );
 }
