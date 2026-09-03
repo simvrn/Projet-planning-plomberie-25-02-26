@@ -26,7 +26,18 @@ const supabase = createClient(
 );
 
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
-const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
+
+// La liste des interlocuteurs n'est plus figée (table memoire_interlocuteurs, gérable depuis
+// l'espace admin) : on vérifie leur existence en base plutôt que contre un tableau en dur.
+async function interlocuteurExists(prenom: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('memoire_interlocuteurs')
+    .select('prenom')
+    .eq('prenom', prenom)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
 
 // Champs de memoire_company_config : [clé camelCase reçue du client, colonne snake_case en base].
 // system_prompt et structure_prompt sont gérés à part (prompts, pas des infos entreprise).
@@ -123,7 +134,21 @@ Deno.serve(async (req) => {
           (moyensHumainsRows ?? []).map((row) => [row.interlocuteur, row.techniciens ?? []])
         );
 
-        return json({ config, referenceDocs, moyensHumainsParInterlocuteur, techniciensParInterlocuteur });
+        // Liste des interlocuteurs : commune à tous les corps de métier (une personne existe
+        // indépendamment du métier sélectionné dans l'admin).
+        const { data: interlocuteurs, error: interlocuteursError } = await supabase
+          .from('memoire_interlocuteurs')
+          .select('prenom, nom')
+          .order('created_at', { ascending: true });
+        if (interlocuteursError) return json({ error: interlocuteursError.message }, 500);
+
+        return json({
+          config,
+          referenceDocs,
+          moyensHumainsParInterlocuteur,
+          techniciensParInterlocuteur,
+          interlocuteurs: interlocuteurs ?? [],
+        });
       }
 
       case 'save-config': {
@@ -164,7 +189,7 @@ Deno.serve(async (req) => {
         if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
           return json({ error: 'corpsDeMetier invalide' }, 400);
         }
-        if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+        if (!interlocuteur || !(await interlocuteurExists(interlocuteur))) {
           return json({ error: 'interlocuteur invalide' }, 400);
         }
         if (techniciens !== undefined && !Array.isArray(techniciens)) {
@@ -184,6 +209,54 @@ Deno.serve(async (req) => {
             { onConflict: 'corps_de_metier,interlocuteur' }
           );
         if (upsertError) return json({ error: upsertError.message }, 500);
+
+        return json({ ok: true });
+      }
+
+      case 'add-interlocuteur': {
+        const { prenom, nom } = body as { prenom?: string; nom?: string };
+        const trimmedPrenom = prenom?.trim();
+        if (!trimmedPrenom) return json({ error: 'prenom requis' }, 400);
+
+        const { error: insertError } = await supabase
+          .from('memoire_interlocuteurs')
+          .insert({ prenom: trimmedPrenom, nom: nom?.trim() ?? '' });
+        if (insertError) {
+          if (insertError.code === '23505') {
+            return json({ error: 'Cette personne existe déjà' }, 400);
+          }
+          return json({ error: insertError.message }, 500);
+        }
+
+        return json({ ok: true });
+      }
+
+      case 'update-interlocuteur': {
+        const { prenom, nom } = body as { prenom?: string; nom?: string };
+        if (!prenom) return json({ error: 'prenom requis' }, 400);
+
+        const { error: updateInterlocuteurError } = await supabase
+          .from('memoire_interlocuteurs')
+          .update({ nom: nom?.trim() ?? '' })
+          .eq('prenom', prenom);
+        if (updateInterlocuteurError) return json({ error: updateInterlocuteurError.message }, 500);
+
+        return json({ ok: true });
+      }
+
+      case 'delete-interlocuteur': {
+        const { prenom } = body as { prenom?: string };
+        if (!prenom) return json({ error: 'prenom requis' }, 400);
+
+        // Nettoie aussi les moyens humains associés (tous corps de métier) : sans quoi ils
+        // resteraient orphelins en base, invisibles et impossibles à ré-attribuer.
+        await supabase.from('memoire_moyens_humains').delete().eq('interlocuteur', prenom);
+
+        const { error: deleteInterlocuteurError } = await supabase
+          .from('memoire_interlocuteurs')
+          .delete()
+          .eq('prenom', prenom);
+        if (deleteInterlocuteurError) return json({ error: deleteInterlocuteurError.message }, 500);
 
         return json({ ok: true });
       }

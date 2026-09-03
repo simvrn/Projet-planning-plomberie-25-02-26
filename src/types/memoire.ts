@@ -1,8 +1,15 @@
-export type Interlocuteur = 'Vlad' | 'Stéphane' | 'Simon' | 'Eric' | 'Sébastien';
+// Le prénom identifie l'interlocuteur (clé utilisée partout : base, prompts, sélection) ; le nom
+// de famille n'est utilisé que pour l'affichage (mémoire généré). La liste n'est plus figée dans
+// le code : elle est gérée depuis l'espace admin (table memoire_interlocuteurs) et peut contenir
+// n'importe quelle personne.
+export type Interlocuteur = string;
+
+export interface InterlocuteurPerson {
+  prenom: string;
+  nom: string;
+}
 
 export type CorpsDeMetier = 'Électricité' | 'Interphonie' | 'Plomberie' | 'Serrurerie';
-
-export const INTERLOCUTEURS: Interlocuteur[] = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 
 export const CORPS_DE_METIER: CorpsDeMetier[] = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
 

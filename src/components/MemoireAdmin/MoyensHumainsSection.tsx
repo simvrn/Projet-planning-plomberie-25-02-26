@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { Input } from '../ui/Input';
-import { saveMoyensHumains } from '../../lib/memoire/memoireApi';
-import { INTERLOCUTEURS } from '../../types/memoire';
-import type { CorpsDeMetier, Interlocuteur } from '../../types/memoire';
+import {
+  addInterlocuteur,
+  deleteInterlocuteur,
+  saveMoyensHumains,
+  updateInterlocuteurNom,
+} from '../../lib/memoire/memoireApi';
+import type { CorpsDeMetier, Interlocuteur, InterlocuteurPerson } from '../../types/memoire';
 
 interface MoyensHumainsSectionProps {
   password: string;
   corpsDeMetier: CorpsDeMetier;
+  interlocuteurs: InterlocuteurPerson[];
   moyensHumainsParInterlocuteur: Partial<Record<Interlocuteur, string>>;
   techniciensParInterlocuteur: Partial<Record<Interlocuteur, string[]>>;
   onSaved: () => void;
@@ -20,21 +25,64 @@ const textareaClassName =
 export function MoyensHumainsSection({
   password,
   corpsDeMetier,
+  interlocuteurs,
   moyensHumainsParInterlocuteur,
   techniciensParInterlocuteur,
   onSaved,
 }: MoyensHumainsSectionProps) {
-  const [selected, setSelected] = useState<Interlocuteur>(INTERLOCUTEURS[0]);
+  const [selected, setSelected] = useState<Interlocuteur>(interlocuteurs[0]?.prenom ?? '');
+  const [nom, setNom] = useState(interlocuteurs.find((i) => i.prenom === selected)?.nom ?? '');
   const [contenu, setContenu] = useState(moyensHumainsParInterlocuteur[selected] ?? '');
   const [techniciens, setTechniciens] = useState<string[]>(techniciensParInterlocuteur[selected] ?? []);
   const [newTechnicien, setNewTechnicien] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [newPrenom, setNewPrenom] = useState('');
+  const [newNom, setNewNom] = useState('');
+  const [addingPerson, setAddingPerson] = useState(false);
+
   useEffect(() => {
+    if (!selected && interlocuteurs.length > 0) {
+      setSelected(interlocuteurs[0].prenom);
+    }
+  }, [interlocuteurs, selected]);
+
+  useEffect(() => {
+    setNom(interlocuteurs.find((i) => i.prenom === selected)?.nom ?? '');
     setContenu(moyensHumainsParInterlocuteur[selected] ?? '');
     setTechniciens(techniciensParInterlocuteur[selected] ?? []);
-  }, [selected, moyensHumainsParInterlocuteur, techniciensParInterlocuteur]);
+  }, [selected, interlocuteurs, moyensHumainsParInterlocuteur, techniciensParInterlocuteur]);
+
+  async function handleAddPerson() {
+    const trimmedPrenom = newPrenom.trim();
+    if (!trimmedPrenom) return;
+    setAddingPerson(true);
+    setError(null);
+    try {
+      await addInterlocuteur(password, trimmedPrenom, newNom.trim());
+      setNewPrenom('');
+      setNewNom('');
+      setSelected(trimmedPrenom);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setAddingPerson(false);
+    }
+  }
+
+  async function handleDeletePerson(prenom: string) {
+    if (!window.confirm(`Retirer ${prenom} de la liste des interlocuteurs ?`)) return;
+    setError(null);
+    try {
+      await deleteInterlocuteur(password, prenom);
+      if (selected === prenom) setSelected('');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    }
+  }
 
   function handleAddTechnicien() {
     const trimmed = newTechnicien.trim();
@@ -59,6 +107,10 @@ export function MoyensHumainsSection({
     setSaving(true);
     setError(null);
     try {
+      const existingNom = interlocuteurs.find((i) => i.prenom === selected)?.nom ?? '';
+      if (nom.trim() !== existingNom) {
+        await updateInterlocuteurNom(password, selected, nom);
+      }
       await saveMoyensHumains(password, corpsDeMetier, selected, contenu, techniciens);
       onSaved();
     } catch (err) {
@@ -73,17 +125,53 @@ export function MoyensHumainsSection({
       <h3 className="text-lg font-semibold text-gray-900">Moyens humains — {corpsDeMetier}</h3>
       <p className="text-sm text-gray-600">
         Chaque interlocuteur gère des ressources différentes : renseigne les moyens humains propres à
-        chacun. Ce contenu change rarement une fois rempli.
+        chacun. Ce contenu change rarement une fois rempli. Cette liste de personnes est commune à
+        tous les corps de métier et à l'écran de départ du mémoire.
       </p>
 
       <div className="flex flex-wrap gap-2">
-        {INTERLOCUTEURS.map((name) => (
-          <Chip key={name} selected={selected === name} onClick={() => setSelected(name)}>
-            {name}
+        {interlocuteurs.map(({ prenom, nom: personNom }) => (
+          <Chip
+            key={prenom}
+            selected={selected === prenom}
+            onClick={() => setSelected(prenom)}
+            onRemove={() => handleDeletePerson(prenom)}
+          >
+            {personNom ? `${prenom} ${personNom}` : prenom}
           </Chip>
         ))}
       </div>
 
+      <div className="flex gap-2 items-end">
+        <Input
+          label="Prénom"
+          placeholder="ex : Julien"
+          value={newPrenom}
+          onChange={(e) => setNewPrenom(e.target.value)}
+        />
+        <Input label="Nom" placeholder="ex : Martin" value={newNom} onChange={(e) => setNewNom(e.target.value)} />
+        <Button type="button" variant="secondary" onClick={handleAddPerson} disabled={addingPerson || !newPrenom.trim()}>
+          {addingPerson ? 'Ajout...' : '+ Ajouter une personne'}
+        </Button>
+      </div>
+
+      {selected && (
+        <div className="max-w-xs">
+          <Input
+            label={`Nom de famille de ${selected}`}
+            placeholder="ex : Dupont"
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Affiché en entier ("{selected}{nom.trim() ? ` ${nom.trim()}` : ''}") comme interlocuteur
+            unique dans le mémoire généré.
+          </p>
+        </div>
+      )}
+
+      {selected && (
+      <>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Techniciens de {selected}, par ordre de priorité
@@ -161,11 +249,16 @@ export function MoyensHumainsSection({
         <textarea className={textareaClassName} value={contenu} onChange={(e) => setContenu(e.target.value)} />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
       <Button onClick={handleSave} disabled={saving}>
         {saving ? 'Enregistrement...' : 'Enregistrer'}
       </Button>
+      </>
+      )}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {interlocuteurs.length === 0 && (
+        <p className="text-sm text-gray-500">Ajoute une première personne ci-dessus pour commencer.</p>
+      )}
     </div>
   );
 }

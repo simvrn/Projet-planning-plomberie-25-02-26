@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { getAdminConfig } from '../../lib/memoire/memoireApi';
 import { CORPS_DE_METIER } from '../../types/memoire';
-import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier, Interlocuteur, InterlocuteurPerson, ReferenceDoc } from '../../types/memoire';
 import { CompanyInfoSection } from './CompanyInfoSection';
 import { SystemPromptSection } from './SystemPromptSection';
 import { StructurePromptSection } from './StructurePromptSection';
@@ -28,6 +28,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
   const [techniciensParInterlocuteur, setTechniciensParInterlocuteur] = useState<
     Partial<Record<Interlocuteur, string[]>>
   >({});
+  const [interlocuteurs, setInterlocuteurs] = useState<InterlocuteurPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +42,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
       setReferenceDocs(result.referenceDocs);
       setMoyensHumainsParInterlocuteur(result.moyensHumainsParInterlocuteur);
       setTechniciensParInterlocuteur(result.techniciensParInterlocuteur);
+      setInterlocuteurs(result.interlocuteurs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -134,6 +136,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
                   key={corpsDeMetier}
                   password={adminPassword}
                   corpsDeMetier={corpsDeMetier}
+                  interlocuteurs={interlocuteurs}
                   moyensHumainsParInterlocuteur={moyensHumainsParInterlocuteur}
                   techniciensParInterlocuteur={techniciensParInterlocuteur}
                   onSaved={refresh}

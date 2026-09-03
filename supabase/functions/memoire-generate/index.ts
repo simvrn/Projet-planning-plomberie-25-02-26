@@ -72,8 +72,24 @@ const supabase = createClient(
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
 const CLAUDE_MODEL = 'claude-sonnet-5';
 
-const VALID_INTERLOCUTEURS = ['Vlad', 'Stéphane', 'Simon', 'Eric', 'Sébastien'];
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
+
+// La liste des interlocuteurs n'est plus figée (table memoire_interlocuteurs, gérable depuis
+// l'espace admin) : on vérifie leur existence en base plutôt que contre un tableau en dur, et on
+// récupère le nom de famille pour afficher le nom complet dans le mémoire généré.
+async function getInterlocuteur(prenom: string): Promise<{ prenom: string; nom: string } | null> {
+  const { data, error } = await supabase
+    .from('memoire_interlocuteurs')
+    .select('prenom, nom')
+    .eq('prenom', prenom)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+function fullName(interlocuteur: { prenom: string; nom: string }): string {
+  return interlocuteur.nom.trim() ? `${interlocuteur.prenom} ${interlocuteur.nom.trim()}` : interlocuteur.prenom;
+}
 // Les thématiques ne sont plus restreintes à cette liste côté serveur : l'utilisateur peut
 // ajouter des thématiques libres non prévues (voir StartForm.tsx côté client).
 
@@ -1024,13 +1040,17 @@ async function gatherContext(corpsDeMetier: string, interlocuteur: string) {
     .single();
   if (configError) throw new Error(configError.message);
 
-  const { data: moyensHumains, error: moyensError } = await supabase
+  // maybeSingle (pas single) : un interlocuteur tout juste ajouté dans l'espace admin peut ne pas
+  // encore avoir de ligne "moyens humains" pour ce corps de métier tant que personne n'a enregistré
+  // de contenu pour lui — dans ce cas on retombe simplement sur des valeurs vides.
+  const { data: moyensHumainsRow, error: moyensError } = await supabase
     .from('memoire_moyens_humains')
     .select('contenu, techniciens')
     .eq('corps_de_metier', corpsDeMetier)
     .eq('interlocuteur', interlocuteur)
-    .single();
+    .maybeSingle();
   if (moyensError) throw new Error(moyensError.message);
+  const moyensHumains = moyensHumainsRow ?? { contenu: '', techniciens: [] };
 
   const { data: referenceDocs, error: refError } = await supabase
     .from('memoire_reference_docs')
@@ -1192,11 +1212,22 @@ Deno.serve(async (req) => {
     });
   }
 
+  // --- Liste publique des interlocuteurs (pas de mot de passe : utilisée dès l'écran de départ
+  // du mémoire, avant tout accès admin) ---
+  if (body.action === 'list-interlocuteurs') {
+    const { data, error } = await supabase
+      .from('memoire_interlocuteurs')
+      .select('prenom, nom')
+      .order('created_at', { ascending: true });
+    if (error) return json({ error: error.message }, 500);
+    return json({ interlocuteurs: data ?? [] });
+  }
+
   // --- Démarre une génération : crée juste la ligne, aucun appel Claude ici ---
   if (body.action === 'start') {
     const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
 
-    if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
+    if (!interlocuteur || !(await getInterlocuteur(interlocuteur))) {
       return json({ error: 'interlocuteur invalide' }, 400);
     }
     if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
@@ -1234,9 +1265,9 @@ Deno.serve(async (req) => {
     const { generationId, interlocuteur, corpsDeMetier, nombrePersonnes, projectDocs, thematique, sectionIndex, totalSections } = body;
 
     if (!generationId) return json({ error: 'generationId requis' }, 400);
-    if (!interlocuteur || !VALID_INTERLOCUTEURS.includes(interlocuteur)) {
-      return json({ error: 'interlocuteur invalide' }, 400);
-    }
+    if (!interlocuteur) return json({ error: 'interlocuteur invalide' }, 400);
+    const interlocuteurRecord = await getInterlocuteur(interlocuteur);
+    if (!interlocuteurRecord) return json({ error: 'interlocuteur invalide' }, 400);
     if (!corpsDeMetier || !VALID_CORPS_DE_METIER.includes(corpsDeMetier)) {
       return json({ error: 'corpsDeMetier invalide' }, 400);
     }
@@ -1260,7 +1291,7 @@ Deno.serve(async (req) => {
       ]);
       const { systemPrompt, userPrompt } = buildSectionPrompts(
         context,
-        interlocuteur,
+        fullName(interlocuteurRecord),
         corpsDeMetier,
         nombrePersonnes!,
         resolvedProjectDocs,
@@ -1348,7 +1379,9 @@ Deno.serve(async (req) => {
       const content: MemoireContent = { title: 'Mémoire technique', sections };
       const metadata: MemoireMetadata = row.metadata_json ?? {};
       const thematiques = (Array.isArray(row.thematiques) ? row.thematiques : []) as string[];
-      const docxBytes = await buildDocx(content, metadata, interlocuteur, corpsDeMetier, thematiques);
+      const interlocuteurRecord = await getInterlocuteur(interlocuteur);
+      const displayName = interlocuteurRecord ? fullName(interlocuteurRecord) : interlocuteur;
+      const docxBytes = await buildDocx(content, metadata, displayName, corpsDeMetier, thematiques);
 
       const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
       const { error: uploadError } = await supabase.storage

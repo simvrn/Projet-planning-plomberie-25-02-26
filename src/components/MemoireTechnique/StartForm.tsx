@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
-import { CORPS_DE_METIER, INTERLOCUTEURS } from '../../types/memoire';
+import { CORPS_DE_METIER } from '../../types/memoire';
+import type { InterlocuteurPerson } from '../../types/memoire';
+import { listInterlocuteurs } from '../../lib/memoire/memoireApi';
 
 export function StartForm() {
   const {
@@ -13,6 +16,15 @@ export function StartForm() {
     setNombrePersonnes,
     setStep,
   } = useMemoireStore();
+
+  const [interlocuteurs, setInterlocuteurs] = useState<InterlocuteurPerson[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listInterlocuteurs()
+      .then(setInterlocuteurs)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Erreur inconnue'));
+  }, []);
 
   const canContinue = Boolean(interlocuteur && corpsDeMetier && nombrePersonnes);
 
@@ -27,16 +39,17 @@ export function StartForm() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Interlocuteur principal</label>
           <div className="flex flex-wrap gap-2">
-            {INTERLOCUTEURS.map((name) => (
+            {interlocuteurs.map(({ prenom, nom }) => (
               <Chip
-                key={name}
-                selected={interlocuteur === name}
-                onClick={() => setInterlocuteur(name)}
+                key={prenom}
+                selected={interlocuteur === prenom}
+                onClick={() => setInterlocuteur(prenom)}
               >
-                {name}
+                {nom ? `${prenom} ${nom}` : prenom}
               </Chip>
             ))}
           </div>
+          {loadError && <p className="text-sm text-red-600 mt-1">{loadError}</p>}
         </div>
 
         <div>

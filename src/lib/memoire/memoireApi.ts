@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import type { CompanyConfig, CorpsDeMetier, Interlocuteur, ReferenceDoc } from '../../types/memoire';
+import type { CompanyConfig, CorpsDeMetier, Interlocuteur, InterlocuteurPerson, ReferenceDoc } from '../../types/memoire';
 
 /**
  * Upload un document projet (PDF, Word ou texte) dans le bucket public "memoire_project_docs".
@@ -102,8 +102,34 @@ export async function getAdminConfig(
   referenceDocs: ReferenceDoc[];
   moyensHumainsParInterlocuteur: Partial<Record<Interlocuteur, string>>;
   techniciensParInterlocuteur: Partial<Record<Interlocuteur, string[]>>;
+  interlocuteurs: InterlocuteurPerson[];
 }> {
   return callMemoireAdmin('get-config', password, { corpsDeMetier });
+}
+
+/**
+ * Liste publique des interlocuteurs (prénom + nom), utilisée dès l'écran de départ du mémoire —
+ * pas de mot de passe requis, contrairement au reste de l'espace admin.
+ */
+export async function listInterlocuteurs(): Promise<InterlocuteurPerson[]> {
+  const { data, error } = await supabase.functions.invoke('memoire-generate', {
+    body: { action: 'list-interlocuteurs' },
+  });
+  if (error) throw new Error(await extractErrorMessage(error, data));
+  if (data?.error) throw new Error(data.error);
+  return (data as { interlocuteurs: InterlocuteurPerson[] }).interlocuteurs;
+}
+
+export async function addInterlocuteur(password: string, prenom: string, nom: string): Promise<void> {
+  await callMemoireAdmin('add-interlocuteur', password, { prenom, nom });
+}
+
+export async function updateInterlocuteurNom(password: string, prenom: string, nom: string): Promise<void> {
+  await callMemoireAdmin('update-interlocuteur', password, { prenom, nom });
+}
+
+export async function deleteInterlocuteur(password: string, prenom: string): Promise<void> {
+  await callMemoireAdmin('delete-interlocuteur', password, { prenom });
 }
 
 export interface CompanyInfoFields {
