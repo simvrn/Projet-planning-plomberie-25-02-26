@@ -231,6 +231,7 @@ export interface GenerateMemoirePayload {
   corpsDeMetier: CorpsDeMetier;
   thematiques: string[];
   nombrePersonnes: number;
+  notesImportantes: string;
   projectDocs: { name: string; textStoragePath: string }[];
 }
 
@@ -291,6 +292,7 @@ export async function generateMemoireStepByStep(
           interlocuteur: payload.interlocuteur,
           corpsDeMetier: payload.corpsDeMetier,
           nombrePersonnes: payload.nombrePersonnes,
+          notesImportantes: payload.notesImportantes,
           projectDocs: payload.projectDocs,
           thematique,
           sectionIndex: i,

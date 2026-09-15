@@ -34,7 +34,7 @@ export function PdfToTxtTool() {
   }
 
   return (
-    <div className="max-w-lg mx-auto mt-10 border-t border-gray-200 pt-6">
+    <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-1">Convertir un PDF en texte (.txt)</h3>
       <p className="text-xs text-gray-500 mb-3">
         Petit outil indépendant : uploade un PDF, le texte extrait est téléchargé directement en .txt.

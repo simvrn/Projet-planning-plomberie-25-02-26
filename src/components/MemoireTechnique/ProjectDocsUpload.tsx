@@ -5,6 +5,7 @@ import { extractTextFromFile } from '../../lib/memoire/textExtraction';
 import { uploadProjectDoc, uploadExtractedText, generateMemoireStepByStep } from '../../lib/memoire/memoireApi';
 import type { ProjectDocFile } from '../../types/memoire';
 import { PdfToTxtTool } from './PdfToTxtTool';
+import { NotesImportantesSection } from './NotesImportantesSection';
 
 const STATUS_LABEL: Record<ProjectDocFile['status'], string> = {
   extracting: 'Lecture du document...',
@@ -19,6 +20,7 @@ export function ProjectDocsUpload() {
     corpsDeMetier,
     thematiques,
     nombrePersonnes,
+    notesImportantes,
     projectDocs,
     addProjectDocs,
     updateProjectDoc,
@@ -91,6 +93,7 @@ export function ProjectDocsUpload() {
           corpsDeMetier,
           thematiques,
           nombrePersonnes,
+          notesImportantes,
           projectDocs: projectDocs.map((d) => ({
             name: d.name,
             textStoragePath: d.textStoragePath!,
@@ -178,7 +181,10 @@ export function ProjectDocsUpload() {
         </p>
       )}
 
-      <PdfToTxtTool />
+      <div className="mt-10 grid grid-cols-1 gap-8 border-t border-gray-200 pt-6 sm:grid-cols-2">
+        <PdfToTxtTool />
+        <NotesImportantesSection />
+      </div>
     </div>
   );
 }

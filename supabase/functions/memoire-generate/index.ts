@@ -1073,7 +1073,8 @@ function buildSectionPrompts(
   projectDocs: ResolvedProjectDoc[],
   thematique: string,
   sectionIndex: number,
-  totalSections: number
+  totalSections: number,
+  notesImportantes: string
 ): { systemPrompt: string; userPrompt: string } {
   const { config, moyensHumains, referenceDocs } = context;
 
@@ -1124,6 +1125,15 @@ ${buildOutputFormatInstructions(sectionIndex === 0)}`;
     .map((d, i) => `### Document projet ${i + 1} : ${d.name}\n${truncate(d.extractedText, 400000)}`)
     .join('\n\n---\n\n');
 
+  // Notes libres saisies pour CE mémoire précis (voir NotesImportantesSection côté client) :
+  // consignes ponctuelles que l'admin/l'utilisateur juge critiques (ex. contrainte client connue,
+  // point déjà refusé par le passé...). Volontairement placées tout en haut du prompt utilisateur,
+  // juste après la thématique, et formulées en instruction impérative pour qu'elles ne soient
+  // jamais diluées ou oubliées au milieu du reste du contexte (entreprise, CCTP...).
+  const notesSection = notesImportantes?.trim()
+    ? `\n\n# ⚠️ Note importante spécifique à ce mémoire (priorité absolue)\nÀ respecter impérativement dans cette section si elle concerne le sujet traité ici — elle prime sur les informations générales de l'entreprise ou les mémoires de référence en cas de contradiction :\n${notesImportantes.trim()}`
+    : '';
+
   const userPrompt = `Rédige UNE SEULE section (section ${sectionIndex + 1}/${totalSections}) d'un mémoire technique pour répondre à un appel d'offres — les autres sections sont rédigées séparément dans d'autres appels, tu ne dois traiter que celle-ci.
 
 Interlocuteur principal côté entreprise : ${interlocuteur}
@@ -1134,6 +1144,7 @@ Nombre de personnes affectées au chantier : ${nombrePersonnes}
 ${thematique}
 
 Cette thématique correspond exactement à un critère de notation de l'appel d'offres. Réponds UNIQUEMENT à ce critère précis — n'écris pas de présentation générale du projet, du CCTP ou de l'entreprise qui ne servirait pas directement à y répondre. Tout ce que tu vas puiser dans le CCTP ci-dessous doit être choisi parce que c'est pertinent pour CETTE thématique, pas parce que ça fait partie du projet en général.
+${notesSection}
 
 # Informations sur l'entreprise (uniquement ce qui a été renseigné)
 
@@ -1169,6 +1180,7 @@ Deno.serve(async (req) => {
     corpsDeMetier?: string;
     thematiques?: string[];
     nombrePersonnes?: number;
+    notesImportantes?: string;
     projectDocs?: ProjectDoc[];
     thematique?: string;
     sectionIndex?: number;
@@ -1262,7 +1274,7 @@ Deno.serve(async (req) => {
 
   // --- Génère UNE section (un appel Claude court) et l'accumule dans la ligne ---
   if (body.action === 'generate-section') {
-    const { generationId, interlocuteur, corpsDeMetier, nombrePersonnes, projectDocs, thematique, sectionIndex, totalSections } = body;
+    const { generationId, interlocuteur, corpsDeMetier, nombrePersonnes, notesImportantes, projectDocs, thematique, sectionIndex, totalSections } = body;
 
     if (!generationId) return json({ error: 'generationId requis' }, 400);
     if (!interlocuteur) return json({ error: 'interlocuteur invalide' }, 400);
@@ -1297,7 +1309,8 @@ Deno.serve(async (req) => {
         resolvedProjectDocs,
         thematique,
         sectionIndex!,
-        totalSections!
+        totalSections!,
+        notesImportantes ?? ''
       );
       const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt, SECTION_MAX_OUTPUT_TOKENS);
       if (content.sections.length === 0) throw new Error('Aucun contenu généré pour cette section.');

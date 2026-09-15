@@ -16,6 +16,7 @@ interface MemoireStoreState {
   corpsDeMetier: CorpsDeMetier | null;
   thematiques: string[];
   nombrePersonnes: number | null;
+  notesImportantes: string;
   projectDocs: ProjectDocFile[];
 
   generationStatus: GenerationStatus;
@@ -33,6 +34,7 @@ interface MemoireStoreState {
   setCorpsDeMetier: (value: CorpsDeMetier) => void;
   setThematiques: (list: string[]) => void;
   setNombrePersonnes: (value: number) => void;
+  setNotesImportantes: (value: string) => void;
 
   addProjectDocs: (files: File[]) => string[];
   updateProjectDoc: (id: string, data: Partial<ProjectDocFile>) => void;
@@ -56,6 +58,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   corpsDeMetier: null,
   thematiques: [],
   nombrePersonnes: null,
+  notesImportantes: '',
   projectDocs: [],
 
   generationStatus: 'idle',
@@ -73,6 +76,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   setCorpsDeMetier: (value) => set({ corpsDeMetier: value }),
   setThematiques: (list) => set({ thematiques: list }),
   setNombrePersonnes: (value) => set({ nombrePersonnes: value }),
+  setNotesImportantes: (value) => set({ notesImportantes: value }),
 
   addProjectDocs: (files) => {
     const newDocs: ProjectDocFile[] = files.map((file) => ({
@@ -118,6 +122,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       corpsDeMetier: null,
       thematiques: [],
       nombrePersonnes: null,
+      notesImportantes: '',
       projectDocs: [],
       generationStatus: 'idle',
       generationProgress: null,
