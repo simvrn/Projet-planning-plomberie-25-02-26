@@ -87,7 +87,7 @@ export function ProjectDocsUpload() {
     if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
-      const { downloadUrl, usage } = await generateMemoireStepByStep(
+      const { downloadUrl, attentionDownloadUrl, usage } = await generateMemoireStepByStep(
         {
           interlocuteur,
           corpsDeMetier,
@@ -101,7 +101,7 @@ export function ProjectDocsUpload() {
         },
         ({ current, total, thematique }) => setGenerationProgress({ current, total, thematique })
       );
-      setGenerationSuccess(downloadUrl, usage);
+      setGenerationSuccess(downloadUrl, attentionDownloadUrl, usage);
       setStep('result');
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'Erreur inconnue');

@@ -6,7 +6,7 @@ import { ProjectDocsUpload } from './ProjectDocsUpload';
 import { MemoireAdminGate } from '../MemoireAdmin/MemoireAdminGate';
 
 function ResultStep() {
-  const { downloadUrl, generationUsage, resetWizard, setStep } = useMemoireStore();
+  const { downloadUrl, attentionDownloadUrl, generationUsage, resetWizard, setStep } = useMemoireStore();
 
   return (
     <div className="max-w-lg mx-auto py-12 text-center">
@@ -31,6 +31,21 @@ function ResultStep() {
         >
           Télécharger le .docx
         </a>
+      )}
+
+      {attentionDownloadUrl && (
+        <div className="mt-4">
+          <a
+            href={attentionDownloadUrl}
+            download={attentionDownloadUrl.split('/').pop() || 'Points_attention.docx'}
+            className="inline-flex items-center justify-center font-medium rounded-lg transition-colors bg-amber-100 text-amber-800 hover:bg-amber-200 px-6 py-3 text-base"
+          >
+            Télécharger les points d'attention (.docx)
+          </a>
+          <p className="text-xs text-gray-500 mt-2">
+            Liste courte des éléments à vérifier, compléter ou joindre au dossier avant l'envoi.
+          </p>
+        </div>
       )}
 
       <div className="mt-6">

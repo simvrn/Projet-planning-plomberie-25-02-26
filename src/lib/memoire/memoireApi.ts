@@ -256,7 +256,7 @@ async function callMemoireGenerate<T>(body: Record<string, unknown>): Promise<T>
 export async function generateMemoireStepByStep(
   payload: GenerateMemoirePayload,
   onProgress: (info: { current: number; total: number; thematique: string; usage: { totalInputTokens: number; totalOutputTokens: number } }) => void
-): Promise<{ downloadUrl: string; usage: TokenUsage }> {
+): Promise<{ downloadUrl: string; attentionDownloadUrl: string | null; usage: TokenUsage }> {
   const { generationId } = await callMemoireGenerate<{ generationId: string }>({
     action: 'start',
     interlocuteur: payload.interlocuteur,
@@ -309,12 +309,17 @@ export async function generateMemoireStepByStep(
     onProgress({ current: i + 1, total, thematique, usage: lastUsage });
   }
 
-  const final = await callMemoireGenerate<{ ok: true; downloadUrl: string; usage: TokenUsage }>({
+  const final = await callMemoireGenerate<{
+    ok: true;
+    downloadUrl: string;
+    attentionDownloadUrl: string | null;
+    usage: TokenUsage;
+  }>({
     action: 'finalize',
     generationId,
     interlocuteur: payload.interlocuteur,
     corpsDeMetier: payload.corpsDeMetier,
   });
 
-  return { downloadUrl: final.downloadUrl, usage: final.usage };
+  return { downloadUrl: final.downloadUrl, attentionDownloadUrl: final.attentionDownloadUrl, usage: final.usage };
 }

@@ -167,7 +167,14 @@ Structure ton texte avec exactement 3 niveaux de titres Markdown, chacun ayant u
 - ### : les sous-parties numérotées à l'intérieur de la section (ex. présentation, données chiffrées, équipe dédiée...). C'est le niveau le plus utilisé pour découper le contenu.
 - #### : réservé aux cas RARES où une sous-partie ### contient vraiment plusieurs blocs courts et hétérogènes à distinguer visuellement. Dans l'immense majorité des sous-parties ###, il ne faut AUCUN ####, juste des paragraphes/listes normaux. Si tu hésites à utiliser ####, ne l'utilise pas — une section entière peut très bien n'en avoir aucun.
 
-Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.`;
+Utilise des listes à puces (-) ou numérotées (1.) pour le matériel/les étapes/les points de contrôle, des tableaux Markdown (|...|) pour les données chiffrées ou comparatives, et **gras** pour les termes importants. Pour un tableau à 2 colonnes de type clé/valeur, ne mets pas de ligne d'en-tête générique ("Clé | Valeur") : commence directement par les lignes de données.
+
+# Points d'attention (optionnel, uniquement si nécessaire)
+Après le contenu de la section, ajoute un bloc entre triples backticks avec le mot "points_attention" UNIQUEMENT si cette section précise révèle un point concret que l'entreprise doit traiter avant l'envoi du dossier (information qu'elle seule connaît et qui manque ici, document à joindre à la candidature évoqué par le CCTP pour ce lot précis...). Une ligne par point, très concise (pas de phrase développée) :
+\`\`\`points_attention
+- (point concret, une ligne)
+\`\`\`
+N'ajoute JAMAIS ce bloc s'il n'y a rien à signaler pour cette section précise — c'est le cas le plus fréquent, ne force jamais un point artificiel juste pour le remplir.`;
 }
 
 // Le texte extrait (côté navigateur) d'un document projet peut faire plusieurs centaines de Ko :
@@ -249,6 +256,23 @@ function extractMetadata(markdown: string): { metadata: MemoireMetadata; cleaned
 
   const cleaned = markdown.slice(0, match.index) + markdown.slice((match.index ?? 0) + match[0].length);
   return { metadata, cleaned };
+}
+
+// Extrait le bloc optionnel ```points_attention ...``` (voir OUTPUT_FORMAT_INSTRUCTIONS) : des
+// points concrets, remontés section par section, à regrouper dans un second fichier très simple
+// téléchargeable à part (voir action "finalize" — le mémoire lui-même ne doit jamais contenir ce
+// bloc, d'où son retrait du texte avant le parsing des sections).
+function extractPointsAttention(markdown: string): { points: string[]; cleaned: string } {
+  const match = markdown.match(/```points_attention\s*([\s\S]*?)```/i);
+  if (!match) return { points: [], cleaned: markdown };
+
+  const points = match[1]
+    .split('\n')
+    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+    .filter(Boolean);
+
+  const cleaned = markdown.slice(0, match.index) + markdown.slice((match.index ?? 0) + match[0].length);
+  return { points, cleaned };
 }
 
 function truncate(text: string, max: number): string {
@@ -379,7 +403,7 @@ async function callClaude(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number
-): Promise<{ content: MemoireContent; metadata: MemoireMetadata; usage: TokenUsage }> {
+): Promise<{ content: MemoireContent; metadata: MemoireMetadata; pointsAttention: string[]; usage: TokenUsage }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CLAUDE_CALL_TIMEOUT_MS);
 
@@ -427,7 +451,8 @@ async function callClaude(
   const textBlock = data.content?.find((block: { type: string }) => block.type === 'text');
   if (!textBlock?.text) throw new Error('Claude n’a pas retourné de texte');
 
-  const { metadata, cleaned } = extractMetadata(textBlock.text);
+  const { metadata, cleaned: afterMeta } = extractMetadata(textBlock.text);
+  const { points: pointsAttention, cleaned } = extractPointsAttention(afterMeta);
   const parsed = parseMarkdownToMemoire(cleaned);
   if (parsed.sections.length === 0) {
     throw new Error('Claude n’a pas retourné de contenu structuré exploitable (aucune section détectée)');
@@ -438,7 +463,7 @@ async function callClaude(
     outputTokens: data.usage?.output_tokens ?? 0,
   };
 
-  return { content: parsed, metadata, usage };
+  return { content: parsed, metadata, pointsAttention, usage };
 }
 
 // Découpe "texte **important** suite" en TextRun normaux/gras, pour préserver la mise en
@@ -903,6 +928,45 @@ function buildQuestionsPage(thematiques: string[]): (InstanceType<typeof Paragra
   return children;
 }
 
+// Second fichier, volontairement très simple (juste un titre + une liste à puces, aucune mise en
+// page élaborée) : la liste, déjà dédupliquée, des points remontés section par section (voir
+// extractPointsAttention) — informations à vérifier/compléter ou documents à joindre au dossier.
+// Généré seulement s'il y a au moins un point à signaler (voir action "finalize").
+async function buildAttentionDocx(points: string[], corpsDeMetier: string): Promise<Uint8Array> {
+  const children: InstanceType<typeof Paragraph>[] = [
+    new Paragraph({ text: "Points d'attention avant envoi du mémoire", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({
+      text: `À vérifier, compléter ou joindre au dossier de candidature — ${corpsDeMetier}.`,
+      spacing: { after: 240 },
+    }),
+    ...points.map(
+      (point) => new Paragraph({ text: point, numbering: { reference: BULLET_LIST_REFERENCE, level: 0 } })
+    ),
+  ];
+
+  const doc = new Document({
+    numbering: {
+      config: [
+        {
+          reference: BULLET_LIST_REFERENCE,
+          levels: [
+            {
+              level: 0,
+              format: 'bullet',
+              text: '▸',
+              alignment: AlignmentType.START,
+              style: { paragraph: { indent: { left: 400, hanging: 300 } } },
+            },
+          ],
+        },
+      ],
+    },
+    sections: [{ children }],
+  });
+  const buffer = await Packer.toBuffer(doc);
+  return new Uint8Array(buffer);
+}
+
 async function buildDocx(
   content: MemoireContent,
   metadata: MemoireMetadata,
@@ -1203,7 +1267,9 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from('memoire_generations')
-      .select('status, generated_docx_path, error_message, input_tokens, output_tokens, sections_json, thematiques')
+      .select(
+        'status, generated_docx_path, attention_docx_path, error_message, input_tokens, output_tokens, sections_json, thematiques'
+      )
       .eq('id', generationId)
       .single();
     if (error) return json({ error: error.message }, 500);
@@ -1214,9 +1280,15 @@ Deno.serve(async (req) => {
       } = supabase.storage
         .from('memoire_generated')
         .getPublicUrl(data.generated_docx_path, { download: data.generated_docx_path });
+      const attentionDownloadUrl = data.attention_docx_path
+        ? supabase.storage
+            .from('memoire_generated')
+            .getPublicUrl(data.attention_docx_path, { download: data.attention_docx_path }).data.publicUrl
+        : null;
       return json({
         status: 'done',
         downloadUrl: publicUrl,
+        attentionDownloadUrl,
         usage: { inputTokens: data.input_tokens ?? 0, outputTokens: data.output_tokens ?? 0 },
       });
     }
@@ -1316,7 +1388,7 @@ Deno.serve(async (req) => {
         totalSections!,
         notesImportantes ?? ''
       );
-      const { content, metadata, usage } = await callClaude(systemPrompt, userPrompt, SECTION_MAX_OUTPUT_TOKENS);
+      const { content, metadata, pointsAttention, usage } = await callClaude(systemPrompt, userPrompt, SECTION_MAX_OUTPUT_TOKENS);
       if (content.sections.length === 0) throw new Error('Aucun contenu généré pour cette section.');
 
       // Filet de sécurité constaté en test réel : Claude omet parfois le titre ## de section
@@ -1335,7 +1407,7 @@ Deno.serve(async (req) => {
 
       const { data: current, error: fetchError } = await supabase
         .from('memoire_generations')
-        .select('sections_json, metadata_json, input_tokens, output_tokens')
+        .select('sections_json, metadata_json, points_attention_json, input_tokens, output_tokens')
         .eq('id', generationId)
         .single();
       if (fetchError) throw new Error(fetchError.message);
@@ -1347,11 +1419,25 @@ Deno.serve(async (req) => {
       const newInputTokens = (current.input_tokens ?? 0) + usage.inputTokens;
       const newOutputTokens = (current.output_tokens ?? 0) + usage.outputTokens;
 
+      // Dédupliqué (insensible à la casse/aux espaces) : plusieurs thématiques distinctes
+      // remontent parfois le même point concret ("joindre l'attestation d'assurance décennale"),
+      // et le fichier final doit rester très concis, sans répétitions.
+      const existingPoints = (Array.isArray(current.points_attention_json) ? current.points_attention_json : []) as string[];
+      const seen = new Set(existingPoints.map((p) => p.trim().toLowerCase()));
+      const newPoints = [...existingPoints];
+      for (const point of pointsAttention) {
+        const key = point.trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        newPoints.push(point);
+      }
+
       const { error: updateError } = await supabase
         .from('memoire_generations')
         .update({
           sections_json: newSections,
           metadata_json: newMetadata,
+          points_attention_json: newPoints,
           input_tokens: newInputTokens,
           output_tokens: newOutputTokens,
         })
@@ -1385,7 +1471,7 @@ Deno.serve(async (req) => {
     try {
       const { data: row, error: fetchError } = await supabase
         .from('memoire_generations')
-        .select('sections_json, metadata_json, input_tokens, output_tokens, thematiques')
+        .select('sections_json, metadata_json, points_attention_json, input_tokens, output_tokens, thematiques')
         .eq('id', generationId)
         .single();
       if (fetchError) throw new Error(fetchError.message);
@@ -1409,9 +1495,29 @@ Deno.serve(async (req) => {
         });
       if (uploadError) throw new Error(uploadError.message);
 
+      // Second fichier, distinct et optionnel : seulement s'il y a au moins un point remonté par
+      // l'IA pendant la génération (voir extractPointsAttention / action "generate-section").
+      const pointsAttention = (Array.isArray(row.points_attention_json) ? row.points_attention_json : []) as string[];
+      let attentionFileName: string | null = null;
+      let attentionDownloadUrl: string | null = null;
+      if (pointsAttention.length > 0) {
+        attentionFileName = `Points_attention_${slugify(corpsDeMetier)}_${generationId}.docx`;
+        const attentionBytes = await buildAttentionDocx(pointsAttention, corpsDeMetier);
+        const { error: attentionUploadError } = await supabase.storage
+          .from('memoire_generated')
+          .upload(attentionFileName, attentionBytes, {
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            upsert: false,
+          });
+        if (attentionUploadError) throw new Error(attentionUploadError.message);
+        attentionDownloadUrl = supabase.storage
+          .from('memoire_generated')
+          .getPublicUrl(attentionFileName, { download: attentionFileName }).data.publicUrl;
+      }
+
       await supabase
         .from('memoire_generations')
-        .update({ status: 'done', generated_docx_path: fileName })
+        .update({ status: 'done', generated_docx_path: fileName, attention_docx_path: attentionFileName })
         .eq('id', generationId);
 
       const {
@@ -1421,6 +1527,7 @@ Deno.serve(async (req) => {
       return json({
         ok: true,
         downloadUrl: publicUrl,
+        attentionDownloadUrl,
         usage: { inputTokens: row.input_tokens ?? 0, outputTokens: row.output_tokens ?? 0 },
       });
     } catch (err) {

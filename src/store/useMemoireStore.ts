@@ -22,6 +22,7 @@ interface MemoireStoreState {
   generationStatus: GenerationStatus;
   generationProgress: { current: number; total: number; thematique: string } | null;
   downloadUrl: string | null;
+  attentionDownloadUrl: string | null;
   generationError: string | null;
   generationUsage: TokenUsage | null;
 
@@ -42,7 +43,7 @@ interface MemoireStoreState {
 
   startGeneration: () => void;
   setGenerationProgress: (progress: { current: number; total: number; thematique: string }) => void;
-  setGenerationSuccess: (downloadUrl: string, usage: TokenUsage) => void;
+  setGenerationSuccess: (downloadUrl: string, attentionDownloadUrl: string | null, usage: TokenUsage) => void;
   setGenerationError: (message: string) => void;
 
   unlockAdmin: (password: string) => void;
@@ -64,6 +65,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   generationStatus: 'idle',
   generationProgress: null,
   downloadUrl: null,
+  attentionDownloadUrl: null,
   generationError: null,
   generationUsage: null,
 
@@ -106,10 +108,12 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       generationProgress: null,
       generationError: null,
       downloadUrl: null,
+      attentionDownloadUrl: null,
       generationUsage: null,
     }),
   setGenerationProgress: (progress) => set({ generationProgress: progress }),
-  setGenerationSuccess: (downloadUrl, usage) => set({ generationStatus: 'done', downloadUrl, generationUsage: usage }),
+  setGenerationSuccess: (downloadUrl, attentionDownloadUrl, usage) =>
+    set({ generationStatus: 'done', downloadUrl, attentionDownloadUrl, generationUsage: usage }),
   setGenerationError: (message) => set({ generationStatus: 'error', generationError: message }),
 
   unlockAdmin: (password) => set({ adminUnlocked: true, adminPassword: password }),
@@ -127,6 +131,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
       generationStatus: 'idle',
       generationProgress: null,
       downloadUrl: null,
+      attentionDownloadUrl: null,
       generationError: null,
       generationUsage: null,
     }),
