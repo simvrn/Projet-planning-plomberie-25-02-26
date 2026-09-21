@@ -1102,13 +1102,17 @@ ${buildOutputFormatInstructions(sectionIndex === 0)}`;
     ? companyInfoBlocks.join('\n\n')
     : "(Aucune information entreprise renseignée dans l'espace admin pour ce corps de métier.)";
 
-  // Sélection déterministe de l'équipe (interlocuteur + les N-1 premiers techniciens de sa liste,
+  // Sélection déterministe de l'équipe (les N premiers techniciens de la liste de l'interlocuteur,
   // dans l'ordre de priorité défini dans l'espace admin) : calculée ici une seule fois, donc
   // strictement identique dans tous les appels de section — élimine les contradictions de noms
   // constatées quand ce choix était laissé à l'appréciation de chaque appel indépendant.
+  // L'interlocuteur principal n'est PAS compté parmi les N personnes affectées au chantier : c'est
+  // un rôle de gestion (autocontrôle, respect des règles...), pas une présence terrain. Le premier
+  // technicien de la liste est le chef de chantier ; les suivants l'assistent sur site.
   const techniciensList = (moyensHumains.techniciens ?? []) as string[];
-  const equipeSection = techniciensList.length
-    ? `Équipe précisément affectée à CE chantier (${nombrePersonnes} personne${nombrePersonnes > 1 ? 's' : ''} au total, décidée en amont) — utilise EXACTEMENT ces noms, dans cet ordre, et ne mentionne ni n'invente aucun autre nom propre pour désigner l'équipe terrain :\n${[interlocuteur, ...techniciensList.slice(0, Math.max(0, nombrePersonnes - 1))].map((n, i) => `${i + 1}. ${n}`).join('\n')}`
+  const equipeTerrain = techniciensList.slice(0, nombrePersonnes);
+  const equipeSection = equipeTerrain.length
+    ? `Équipe précisément affectée à CE chantier (${nombrePersonnes} personne${nombrePersonnes > 1 ? 's' : ''} au total, décidée en amont) — utilise EXACTEMENT ces noms, dans cet ordre, et ne mentionne ni n'invente aucun autre nom propre pour désigner l'équipe terrain. Le premier nom est le chef de chantier (encadrement de l'équipe sur site), les suivants sont les techniciens qui l'assistent :\n${equipeTerrain.map((n, i) => `${i + 1}. ${n}${i === 0 ? ' — chef de chantier' : ''}`).join('\n')}\n\n${interlocuteur} est l'interlocuteur principal de l'entreprise sur ce chantier : il assure la gestion du chantier, l'autocontrôle et le respect des règles/consignes, mais N'EST PAS présent physiquement sur le chantier au quotidien — ne le compte donc jamais parmi les ${nombrePersonnes} personnes affectées sur site, et ne le désigne jamais comme chef de chantier ou membre de l'équipe terrain.`
     : null;
 
   const moyensHumainsSection = [equipeSection, moyensHumains.contenu?.trim() || null]

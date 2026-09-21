@@ -178,9 +178,11 @@ export function MoyensHumainsSection({
         </label>
         <p className="text-xs text-gray-500 mb-2">
           Quand un mémoire est généré avec par exemple 4 personnes affectées au chantier, l'IA
-          nomme {selected} (interlocuteur) + les 3 premiers techniciens de cette liste, toujours
-          dans cet ordre et jamais d'autres noms inventés. Une ligne par technicien (nom, rôle,
-          habilitations...).
+          prend les 4 premiers techniciens de cette liste, toujours dans cet ordre et jamais
+          d'autres noms inventés : le premier est présenté comme chef de chantier, les 3 suivants
+          comme les techniciens qui l'assistent. {selected} (l'interlocuteur) n'est pas compté
+          parmi eux : il n'est pas présent sur le chantier, son rôle est la gestion (autocontrôle,
+          respect des règles...). Une ligne par technicien (nom, rôle, habilitations...).
         </p>
 
         {techniciens.length > 0 && (
