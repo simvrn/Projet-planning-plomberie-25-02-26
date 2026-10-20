@@ -9,6 +9,16 @@ export interface InterlocuteurPerson {
   nom: string;
 }
 
+// Entreprise au nom de laquelle le mémoire est rédigé (nom, adresse et logo propres à chacune).
+export type Entreprise = 'Edetel Systems' | 'Elec Service Centre';
+
+export const ENTREPRISES: Entreprise[] = ['Edetel Systems', 'Elec Service Centre'];
+
+export interface EntrepriseInfo {
+  nom: Entreprise;
+  adresse: string;
+}
+
 export type CorpsDeMetier = 'Électricité' | 'Interphonie' | 'Plomberie' | 'Serrurerie';
 
 export const CORPS_DE_METIER: CorpsDeMetier[] = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];

@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { useMemoireStore } from '../../store/useMemoireStore';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
-import { CORPS_DE_METIER } from '../../types/memoire';
+import { CORPS_DE_METIER, ENTREPRISES } from '../../types/memoire';
 import type { InterlocuteurPerson } from '../../types/memoire';
 import { listInterlocuteurs } from '../../lib/memoire/memoireApi';
 
 export function StartForm() {
   const {
+    entreprise,
     interlocuteur,
     corpsDeMetier,
     nombrePersonnes,
+    setEntreprise,
     setInterlocuteur,
     setCorpsDeMetier,
     setNombrePersonnes,
@@ -26,16 +28,27 @@ export function StartForm() {
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Erreur inconnue'));
   }, []);
 
-  const canContinue = Boolean(interlocuteur && corpsDeMetier && nombrePersonnes);
+  const canContinue = Boolean(entreprise && interlocuteur && corpsDeMetier && nombrePersonnes);
 
   return (
     <div className="max-w-lg mx-auto py-12">
       <h2 className="text-xl font-semibold text-gray-900 mb-1">Nouveau mémoire technique</h2>
       <p className="text-sm text-gray-600 mb-6">
-        Renseigne l'interlocuteur et le corps de métier concernés avant de démarrer.
+        Renseigne l'entreprise, l'interlocuteur et le corps de métier concernés avant de démarrer.
       </p>
 
       <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Entreprise</label>
+          <div className="flex flex-wrap gap-2">
+            {ENTREPRISES.map((nom) => (
+              <Chip key={nom} selected={entreprise === nom} onClick={() => setEntreprise(nom)}>
+                {nom}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Interlocuteur principal</label>
           <div className="flex flex-wrap gap-2">

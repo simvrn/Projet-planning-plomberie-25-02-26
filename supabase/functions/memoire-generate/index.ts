@@ -26,6 +26,7 @@ import {
   Header,
   Footer,
   PageNumber,
+  ImageRun,
 } from 'npm:docx@9';
 
 const NUMBERED_LIST_REFERENCE = 'memoire-numbered-list';
@@ -40,10 +41,27 @@ const ACCENT_BLUE = '3F7CAC';
 const TOTAL_ROW_FILL = 'DCEEE8';
 const ZEBRA_FILL = 'F5F7FA';
 
-// L'app est l'outil interne d'EDETEL SYSTEMS : ces infos figurent en toutes lettres sur le
-// papier à en-tête réel de l'entreprise, ce n'est pas une donnée inventée.
-const COMPANY_NAME = 'EDETEL SYSTEMS';
-const COMPANY_ADDRESS = '2 rue des Brosses – 37270 LARÇAY';
+// Le mémoire est rédigé au nom de l'une des deux entreprises (choisie dès l'écran de départ) :
+// nom, adresse et logo viennent de memoire_entreprises / memoire_images (gérés dans l'espace admin).
+const VALID_ENTREPRISES = ['Edetel Systems', 'Elec Service Centre'];
+
+interface DocxImage {
+  data: Uint8Array;
+  type: 'png' | 'jpg';
+  width: number;
+  height: number;
+}
+
+interface CompanyIdentity {
+  name: string;
+  address: string;
+  logo: DocxImage | null;
+}
+
+// "EDETEL SYSTEMS – 2 rue des Brosses..." ou juste le nom tant qu'aucune adresse n'est renseignée.
+function companyLine(company: CompanyIdentity): string {
+  return company.address ? `${company.name} – ${company.address}` : company.name;
+}
 
 const CALLOUT_PALETTE: { border: string; fill: string; text: string }[] = [
   { border: '2E7D6B', fill: 'E1F0EA', text: '1F5C4D' },
@@ -211,6 +229,9 @@ interface MemoireSection {
   level: number;
   content: MemoireContentBlock[];
   points?: number;
+  // Vrai sur la section de tête d'une thématique "moyens humains" : l'image de l'organigramme est
+  // insérée juste sous son bandeau (voir buildDocx).
+  organigramme?: boolean;
 }
 
 interface MemoireContent {
@@ -697,18 +718,78 @@ function buildCalloutBox(
   });
 }
 
+// Insère une image en conservant ses proportions, réduite pour tenir dans maxWidth × maxHeight
+// (en pixels ; jamais agrandie au-delà de sa taille d'origine).
+function buildImageRun(image: DocxImage, maxWidth: number, maxHeight: number): InstanceType<typeof ImageRun> {
+  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+  return new ImageRun({
+    type: image.type,
+    data: image.data,
+    transformation: { width: Math.round(image.width * scale), height: Math.round(image.height * scale) },
+  });
+}
+
+async function loadImage(key: string): Promise<DocxImage | null> {
+  const { data: row, error } = await supabase
+    .from('memoire_images')
+    .select('storage_path, image_type, width, height')
+    .eq('key', key)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return null;
+
+  const { data: blob, error: downloadError } = await supabase.storage.from('memoire_assets').download(row.storage_path);
+  if (downloadError || !blob) throw new Error(`Image "${key}" illisible : ${downloadError?.message ?? 'fichier manquant'}`);
+  return { data: new Uint8Array(await blob.arrayBuffer()), type: row.image_type, width: row.width, height: row.height };
+}
+
+async function loadCompanyIdentity(entreprise: string): Promise<CompanyIdentity> {
+  const { data: row, error } = await supabase
+    .from('memoire_entreprises')
+    .select('nom, adresse')
+    .eq('nom', entreprise)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return {
+    name: entreprise.toUpperCase(),
+    address: row?.adresse?.trim() ?? '',
+    logo: await loadImage(`logo:${entreprise}`),
+  };
+}
+
+// Une thématique "moyens humains" (formulations variées selon les appels d'offres) reçoit
+// automatiquement l'organigramme de l'entreprise sous son bandeau.
+const MOYENS_HUMAINS_PATTERN = /moyens?\s+humains?|organigramme|equipe|encadrement|personnel|effectifs?/;
+
+function isMoyensHumainsThematique(thematique: string): boolean {
+  const normalized = thematique.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return MOYENS_HUMAINS_PATTERN.test(normalized);
+}
+
 // En-tête répété sur chaque page : nom du client/lot à gauche, périmètre/date à droite, avec un
 // filet de séparation — reprend la mise en page des mémoires déjà livrés par l'entreprise.
 function buildRunningHeader(
   metadata: MemoireMetadata,
-  corpsDeMetier: string
+  corpsDeMetier: string,
+  company: CompanyIdentity
 ): InstanceType<typeof Header> {
   const leftText = metadata.client && metadata.lot
-    ? `${COMPANY_NAME} × ${metadata.client} | ${metadata.lot}`
+    ? `${company.name} × ${metadata.client} | ${metadata.lot}`
     : metadata.client
-    ? `${COMPANY_NAME} × ${metadata.client}`
-    : `${COMPANY_NAME} | Mémoire technique – ${corpsDeMetier}`;
+    ? `${company.name} × ${metadata.client}`
+    : `${company.name} | Mémoire technique – ${corpsDeMetier}`;
   const rightParts = [metadata.perimetre, new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })].filter(Boolean);
+
+  // Logo de l'entreprise en tête de chaque page (y compris la page de garde, même section Word).
+  const logoCell = company.logo
+    ? [
+        new TableCell({
+          width: { size: 18, type: WidthType.PERCENTAGE },
+          verticalAlign: VerticalAlign.CENTER,
+          children: [new Paragraph({ children: [buildImageRun(company.logo, 110, 40)] })],
+        }),
+      ]
+    : [];
 
   return new Header({
     children: [
@@ -718,12 +799,15 @@ function buildRunningHeader(
         rows: [
           new TableRow({
             children: [
+              ...logoCell,
               new TableCell({
-                width: { size: 65, type: WidthType.PERCENTAGE },
+                width: { size: company.logo ? 50 : 65, type: WidthType.PERCENTAGE },
+                verticalAlign: VerticalAlign.CENTER,
                 children: [new Paragraph({ children: [new TextRun({ text: leftText, bold: true, color: BRAND_BLUE, size: 15 })] })],
               }),
               new TableCell({
-                width: { size: 35, type: WidthType.PERCENTAGE },
+                width: { size: company.logo ? 32 : 35, type: WidthType.PERCENTAGE },
+                verticalAlign: VerticalAlign.CENTER,
                 children: [
                   new Paragraph({
                     alignment: AlignmentType.RIGHT,
@@ -740,7 +824,7 @@ function buildRunningHeader(
   });
 }
 
-function buildFooter(metadata: MemoireMetadata, corpsDeMetier: string): InstanceType<typeof Footer> {
+function buildFooter(metadata: MemoireMetadata, corpsDeMetier: string, company: CompanyIdentity): InstanceType<typeof Footer> {
   const confidentialFor = metadata.client || corpsDeMetier;
   return new Footer({
     children: [
@@ -757,7 +841,7 @@ function buildFooter(metadata: MemoireMetadata, corpsDeMetier: string): Instance
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: `${COMPANY_NAME} – ${COMPANY_ADDRESS} | Confidentiel – usage exclusif ${confidentialFor}`,
+                        text: `${companyLine(company)} | Confidentiel – usage exclusif ${confidentialFor}`,
                         color: '5A5A5A',
                         size: 15,
                       }),
@@ -786,7 +870,7 @@ function buildFooter(metadata: MemoireMetadata, corpsDeMetier: string): Instance
   });
 }
 
-// Page de garde : bandeau EDETEL SYSTEMS, encart objet/client/lot/périmètre (uniquement les
+// Page de garde : logo puis bandeau au nom de l'entreprise choisie, encart objet/client/lot/périmètre (uniquement les
 // lignes dont l'IA a effectivement extrait une valeur du CCTP, voir extractMetadata), puis la
 // fiche "infos marché" — toujours les rubriques que l'app connaît elle-même (candidat,
 // interlocuteur), les autres seulement si extraites.
@@ -794,10 +878,21 @@ function buildCoverPage(
   content: MemoireContent,
   metadata: MemoireMetadata,
   interlocuteur: string,
-  corpsDeMetier: string
+  corpsDeMetier: string,
+  company: CompanyIdentity
 ): (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] {
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
-  children.push(new Paragraph({ text: '', spacing: { after: 400 } }));
+  if (company.logo) {
+    children.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 200, after: 300 },
+        children: [buildImageRun(company.logo, 280, 130)],
+      })
+    );
+  } else {
+    children.push(new Paragraph({ text: '', spacing: { after: 400 } }));
+  }
 
   children.push(
     new Table({
@@ -815,13 +910,17 @@ function buildCoverPage(
               children: [
                 new Paragraph({
                   alignment: AlignmentType.CENTER,
-                  children: [new TextRun({ text: COMPANY_NAME, bold: true, color: 'FFFFFF', size: 56 })],
+                  children: [new TextRun({ text: company.name, bold: true, color: 'FFFFFF', size: 56 })],
                 }),
-                new Paragraph({
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 80 },
-                  children: [new TextRun({ text: COMPANY_ADDRESS, color: 'FFFFFF', size: 20 })],
-                }),
+                ...(company.address
+                  ? [
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 80 },
+                        children: [new TextRun({ text: company.address, color: 'FFFFFF', size: 20 })],
+                      }),
+                    ]
+                  : []),
               ],
             }),
           ],
@@ -897,7 +996,7 @@ function buildCoverPage(
   if (metadata.montantMaximum) infoRows.push(['Montant maximum', metadata.montantMaximum]);
   if (metadata.perimetre) infoRows.push(['Périmètre', metadata.perimetre]);
   if (metadata.duree) infoRows.push(['Durée', metadata.duree]);
-  infoRows.push(['Candidat', `${COMPANY_NAME} – ${COMPANY_ADDRESS}`]);
+  infoRows.push(['Candidat', companyLine(company)]);
   infoRows.push(['Interlocuteur unique', interlocuteur]);
 
   children.push(buildKeyValueTable(infoRows));
@@ -972,11 +1071,13 @@ async function buildDocx(
   metadata: MemoireMetadata,
   interlocuteur: string,
   corpsDeMetier: string,
-  thematiques: string[]
+  thematiques: string[],
+  company: CompanyIdentity,
+  organigramme: DocxImage | null
 ): Promise<Uint8Array> {
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [];
 
-  children.push(...buildCoverPage(content, metadata, interlocuteur, corpsDeMetier));
+  children.push(...buildCoverPage(content, metadata, interlocuteur, corpsDeMetier, company));
   children.push(...buildQuestionsPage(thematiques));
 
   let sectionCounter = 0;
@@ -991,6 +1092,16 @@ async function buildDocx(
       calloutIndex = 0;
       children.push(buildSectionBanner(sectionCounter, cleanHeading, section.points));
       children.push(new Paragraph({ text: '', spacing: { after: 160 } }));
+      if (section.organigramme && organigramme) {
+        // Largeur utile d'une page A4 aux marges par défaut ≈ 600 px.
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 240 },
+            children: [buildImageRun(organigramme, 600, 750)],
+          })
+        );
+      }
       pushContentBlocks(section.content, children);
     } else if (section.level === 3) {
       subCounter++;
@@ -1076,8 +1187,8 @@ async function buildDocx(
     },
     sections: [
       {
-        headers: { default: buildRunningHeader(metadata, corpsDeMetier) },
-        footers: { default: buildFooter(metadata, corpsDeMetier) },
+        headers: { default: buildRunningHeader(metadata, corpsDeMetier, company) },
+        footers: { default: buildFooter(metadata, corpsDeMetier, company) },
         children,
       },
     ],
@@ -1131,6 +1242,7 @@ async function gatherContext(corpsDeMetier: string, interlocuteur: string) {
 // ne demande le bloc de métadonnées qu'une seule fois, sur la toute première section.
 function buildSectionPrompts(
   context: Awaited<ReturnType<typeof gatherContext>>,
+  entreprise: string,
   interlocuteur: string,
   corpsDeMetier: string,
   nombrePersonnes: number,
@@ -1202,8 +1314,15 @@ ${buildOutputFormatInstructions(sectionIndex === 0)}`;
     ? `\n\n# ⚠️ Note importante spécifique à ce mémoire (priorité absolue)\nÀ respecter impérativement dans cette section si elle concerne le sujet traité ici — elle prime sur les informations générales de l'entreprise ou les mémoires de référence en cas de contradiction :\n${notesImportantes.trim()}`
     : '';
 
+  // L'organigramme est une image ajoutée par le code lors de l'assemblage du .docx : on prévient
+  // le modèle pour qu'il ne le recopie pas sous forme de liste/tableau (doublon visuel).
+  const organigrammeNote = isMoyensHumainsThematique(thematique)
+    ? "\n\nL'organigramme de l'entreprise (image) est inséré automatiquement en tête de cette section : ne le reproduis pas sous forme de texte, de liste ou de tableau. Tu peux y faire référence (« voir l'organigramme ci-dessus »)."
+    : '';
+
   const userPrompt = `Rédige UNE SEULE section (section ${sectionIndex + 1}/${totalSections}) d'un mémoire technique pour répondre à un appel d'offres — les autres sections sont rédigées séparément dans d'autres appels, tu ne dois traiter que celle-ci.
 
+Entreprise candidate (au nom de laquelle le mémoire est rédigé) : ${entreprise}
 Interlocuteur principal côté entreprise : ${interlocuteur}
 Corps de métier concerné : ${corpsDeMetier}
 Nombre de personnes affectées au chantier : ${nombrePersonnes}
@@ -1211,7 +1330,7 @@ Nombre de personnes affectées au chantier : ${nombrePersonnes}
 # Thématique à traiter dans cette section
 ${thematique}
 
-Cette thématique correspond exactement à un critère de notation de l'appel d'offres. Réponds UNIQUEMENT à ce critère précis — n'écris pas de présentation générale du projet, du CCTP ou de l'entreprise qui ne servirait pas directement à y répondre. Tout ce que tu vas puiser dans le CCTP ci-dessous doit être choisi parce que c'est pertinent pour CETTE thématique, pas parce que ça fait partie du projet en général.
+Cette thématique correspond exactement à un critère de notation de l'appel d'offres. Réponds UNIQUEMENT à ce critère précis — n'écris pas de présentation générale du projet, du CCTP ou de l'entreprise qui ne servirait pas directement à y répondre. Tout ce que tu vas puiser dans le CCTP ci-dessous doit être choisi parce que c'est pertinent pour CETTE thématique, pas parce que ça fait partie du projet en général.${organigrammeNote}
 ${notesSection}
 
 # Informations sur l'entreprise (uniquement ce qui a été renseigné)
@@ -1244,6 +1363,7 @@ Deno.serve(async (req) => {
   let body: {
     action?: string;
     generationId?: string;
+    entreprise?: string;
     interlocuteur?: string;
     corpsDeMetier?: string;
     thematiques?: string[];
@@ -1313,8 +1433,11 @@ Deno.serve(async (req) => {
 
   // --- Démarre une génération : crée juste la ligne, aucun appel Claude ici ---
   if (body.action === 'start') {
-    const { interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
+    const { entreprise, interlocuteur, corpsDeMetier, thematiques, nombrePersonnes, projectDocs } = body;
 
+    if (!entreprise || !VALID_ENTREPRISES.includes(entreprise)) {
+      return json({ error: 'entreprise invalide' }, 400);
+    }
     if (!interlocuteur || !(await getInterlocuteur(interlocuteur))) {
       return json({ error: 'interlocuteur invalide' }, 400);
     }
@@ -1334,6 +1457,7 @@ Deno.serve(async (req) => {
     const { data: generation, error: insertGenError } = await supabase
       .from('memoire_generations')
       .insert({
+        entreprise,
         interlocuteur,
         corps_de_metier: corpsDeMetier,
         thematiques,
@@ -1350,9 +1474,10 @@ Deno.serve(async (req) => {
 
   // --- Génère UNE section (un appel Claude court) et l'accumule dans la ligne ---
   if (body.action === 'generate-section') {
-    const { generationId, interlocuteur, corpsDeMetier, nombrePersonnes, notesImportantes, projectDocs, thematique, sectionIndex, totalSections } = body;
+    const { generationId, entreprise, interlocuteur, corpsDeMetier, nombrePersonnes, notesImportantes, projectDocs, thematique, sectionIndex, totalSections } = body;
 
     if (!generationId) return json({ error: 'generationId requis' }, 400);
+    if (!entreprise || !VALID_ENTREPRISES.includes(entreprise)) return json({ error: 'entreprise invalide' }, 400);
     if (!interlocuteur) return json({ error: 'interlocuteur invalide' }, 400);
     const interlocuteurRecord = await getInterlocuteur(interlocuteur);
     if (!interlocuteurRecord) return json({ error: 'interlocuteur invalide' }, 400);
@@ -1379,6 +1504,7 @@ Deno.serve(async (req) => {
       ]);
       const { systemPrompt, userPrompt } = buildSectionPrompts(
         context,
+        entreprise,
         fullName(interlocuteurRecord),
         corpsDeMetier,
         nombrePersonnes!,
@@ -1397,11 +1523,12 @@ Deno.serve(async (req) => {
       // pour le badge "N points" : on les reconstruit nous-mêmes à partir de la thématique exacte
       // fournie en entrée, qu'on connaît avec certitude.
       const { heading: thematiqueHeading, points: thematiquePoints } = extractPoints(thematique.trim());
+      const organigramme = isMoyensHumainsThematique(thematique);
       const sectionsFromThisCall: MemoireSection[] =
         content.sections[0].level > 2
-          ? [{ heading: thematiqueHeading, level: 2, points: thematiquePoints, content: [] }, ...content.sections]
+          ? [{ heading: thematiqueHeading, level: 2, points: thematiquePoints, content: [], organigramme }, ...content.sections]
           : [
-              { ...content.sections[0], points: content.sections[0].points ?? thematiquePoints },
+              { ...content.sections[0], points: content.sections[0].points ?? thematiquePoints, organigramme },
               ...content.sections.slice(1),
             ];
 
@@ -1464,8 +1591,9 @@ Deno.serve(async (req) => {
 
   // --- Assemble le .docx final à partir de toutes les sections déjà générées ---
   if (body.action === 'finalize') {
-    const { generationId, interlocuteur, corpsDeMetier } = body;
+    const { generationId, entreprise, interlocuteur, corpsDeMetier } = body;
     if (!generationId) return json({ error: 'generationId requis' }, 400);
+    if (!entreprise || !VALID_ENTREPRISES.includes(entreprise)) return json({ error: 'entreprise invalide' }, 400);
     if (!interlocuteur || !corpsDeMetier) return json({ error: 'interlocuteur/corpsDeMetier requis' }, 400);
 
     try {
@@ -1484,7 +1612,12 @@ Deno.serve(async (req) => {
       const thematiques = (Array.isArray(row.thematiques) ? row.thematiques : []) as string[];
       const interlocuteurRecord = await getInterlocuteur(interlocuteur);
       const displayName = interlocuteurRecord ? fullName(interlocuteurRecord) : interlocuteur;
-      const docxBytes = await buildDocx(content, metadata, displayName, corpsDeMetier, thematiques);
+      // L'organigramme n'est téléchargé que si une section en a besoin.
+      const [company, organigramme] = await Promise.all([
+        loadCompanyIdentity(entreprise),
+        sections.some((s) => s.organigramme) ? loadImage('organigramme') : Promise.resolve(null),
+      ]);
+      const docxBytes = await buildDocx(content, metadata, displayName, corpsDeMetier, thematiques, company, organigramme);
 
       const fileName = `Memoire_Technique_${slugify(corpsDeMetier)}_${generationId}.docx`;
       const { error: uploadError } = await supabase.storage

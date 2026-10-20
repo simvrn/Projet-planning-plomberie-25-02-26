@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import type { CorpsDeMetier, GenerationStatus, Interlocuteur, ProjectDocFile } from '../types/memoire';
+import type { CorpsDeMetier, Entreprise, GenerationStatus, Interlocuteur, ProjectDocFile } from '../types/memoire';
 import type { TokenUsage } from '../lib/memoire/memoireApi';
 
 // Store dédié à la fonctionnalité "Mémoire technique", entièrement séparé du store du planning
@@ -12,6 +12,7 @@ export type MemoireView = 'wizard' | 'admin';
 interface MemoireStoreState {
   view: MemoireView;
   step: MemoireStep;
+  entreprise: Entreprise | null;
   interlocuteur: Interlocuteur | null;
   corpsDeMetier: CorpsDeMetier | null;
   thematiques: string[];
@@ -31,6 +32,7 @@ interface MemoireStoreState {
 
   setView: (view: MemoireView) => void;
   setStep: (step: MemoireStep) => void;
+  setEntreprise: (value: Entreprise) => void;
   setInterlocuteur: (value: Interlocuteur) => void;
   setCorpsDeMetier: (value: CorpsDeMetier) => void;
   setThematiques: (list: string[]) => void;
@@ -55,6 +57,7 @@ interface MemoireStoreState {
 export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   view: 'wizard',
   step: 'start',
+  entreprise: null,
   interlocuteur: null,
   corpsDeMetier: null,
   thematiques: [],
@@ -74,6 +77,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
 
   setView: (view) => set({ view }),
   setStep: (step) => set({ step }),
+  setEntreprise: (value) => set({ entreprise: value }),
   setInterlocuteur: (value) => set({ interlocuteur: value }),
   setCorpsDeMetier: (value) => set({ corpsDeMetier: value }),
   setThematiques: (list) => set({ thematiques: list }),
@@ -122,6 +126,7 @@ export const useMemoireStore = create<MemoireStoreState>((set, get) => ({
   resetWizard: () =>
     set({
       step: 'start',
+      entreprise: null,
       interlocuteur: null,
       corpsDeMetier: null,
       thematiques: [],

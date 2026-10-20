@@ -26,6 +26,12 @@ const supabase = createClient(
 );
 
 const VALID_CORPS_DE_METIER = ['Électricité', 'Interphonie', 'Plomberie', 'Serrurerie'];
+const VALID_ENTREPRISES = ['Edetel Systems', 'Elec Service Centre'];
+
+// Clés de memoire_images : un logo par entreprise + un organigramme commun.
+function isValidImageKey(key: string): boolean {
+  return key === 'organigramme' || VALID_ENTREPRISES.some((nom) => key === `logo:${nom}`);
+}
 
 // La liste des interlocuteurs n'est plus figée (table memoire_interlocuteurs, gérable depuis
 // l'espace admin) : on vérifie leur existence en base plutôt que contre un tableau en dur.
@@ -257,6 +263,107 @@ Deno.serve(async (req) => {
           .delete()
           .eq('prenom', prenom);
         if (deleteInterlocuteurError) return json({ error: deleteInterlocuteurError.message }, 500);
+
+        return json({ ok: true });
+      }
+
+      case 'get-branding': {
+        const { data: entreprises, error: entreprisesError } = await supabase
+          .from('memoire_entreprises')
+          .select('nom, adresse')
+          .order('created_at', { ascending: true });
+        if (entreprisesError) return json({ error: entreprisesError.message }, 500);
+
+        const { data: images, error: imagesError } = await supabase
+          .from('memoire_images')
+          .select('key, storage_path, updated_at');
+        if (imagesError) return json({ error: imagesError.message }, 500);
+
+        const imageUrls = Object.fromEntries(
+          (images ?? []).map((img) => [
+            img.key,
+            // updated_at en paramètre : évite que le navigateur affiche l'ancienne image en cache.
+            `${supabase.storage.from('memoire_assets').getPublicUrl(img.storage_path).data.publicUrl}?v=${encodeURIComponent(img.updated_at)}`,
+          ])
+        );
+
+        return json({ entreprises: entreprises ?? [], imageUrls });
+      }
+
+      case 'save-entreprise-adresse': {
+        const { nom, adresse } = body as { nom?: string; adresse?: string };
+        if (!nom || !VALID_ENTREPRISES.includes(nom)) return json({ error: 'entreprise invalide' }, 400);
+
+        const { error: updateAdresseError } = await supabase
+          .from('memoire_entreprises')
+          .update({ adresse: adresse?.trim() ?? '' })
+          .eq('nom', nom);
+        if (updateAdresseError) return json({ error: updateAdresseError.message }, 500);
+
+        return json({ ok: true });
+      }
+
+      case 'upload-image': {
+        const { key, fileBase64, imageType, width, height } = body as {
+          key?: string;
+          fileBase64?: string;
+          imageType?: string;
+          width?: number;
+          height?: number;
+        };
+        if (!key || !isValidImageKey(key)) return json({ error: 'key invalide' }, 400);
+        if (!fileBase64) return json({ error: 'fileBase64 requis' }, 400);
+        if (imageType !== 'png' && imageType !== 'jpg') {
+          return json({ error: 'Format non supporté : PNG ou JPG uniquement' }, 400);
+        }
+        if (!Number.isInteger(width) || !Number.isInteger(height) || width! < 1 || height! < 1) {
+          return json({ error: 'width/height invalides' }, 400);
+        }
+
+        const { data: previous } = await supabase
+          .from('memoire_images')
+          .select('storage_path')
+          .eq('key', key)
+          .maybeSingle();
+
+        const storagePath = `${Date.now()}-${crypto.randomUUID()}.${imageType}`;
+        const fileBytes = Uint8Array.from(atob(fileBase64), (c) => c.charCodeAt(0));
+        const { error: uploadImageError } = await supabase.storage
+          .from('memoire_assets')
+          .upload(storagePath, fileBytes, { contentType: imageType === 'png' ? 'image/png' : 'image/jpeg', upsert: false });
+        if (uploadImageError) return json({ error: uploadImageError.message }, 500);
+
+        const { error: upsertImageError } = await supabase
+          .from('memoire_images')
+          .upsert(
+            { key, storage_path: storagePath, image_type: imageType, width, height, updated_at: new Date().toISOString() },
+            { onConflict: 'key' }
+          );
+        if (upsertImageError) return json({ error: upsertImageError.message }, 500);
+
+        if (previous?.storage_path) {
+          await supabase.storage.from('memoire_assets').remove([previous.storage_path]);
+        }
+
+        return json({ ok: true });
+      }
+
+      case 'delete-image': {
+        const { key } = body as { key?: string };
+        if (!key || !isValidImageKey(key)) return json({ error: 'key invalide' }, 400);
+
+        const { data: existingImage, error: fetchImageError } = await supabase
+          .from('memoire_images')
+          .select('storage_path')
+          .eq('key', key)
+          .maybeSingle();
+        if (fetchImageError) return json({ error: fetchImageError.message }, 500);
+
+        if (existingImage?.storage_path) {
+          await supabase.storage.from('memoire_assets').remove([existingImage.storage_path]);
+        }
+        const { error: deleteImageError } = await supabase.from('memoire_images').delete().eq('key', key);
+        if (deleteImageError) return json({ error: deleteImageError.message }, 500);
 
         return json({ ok: true });
       }

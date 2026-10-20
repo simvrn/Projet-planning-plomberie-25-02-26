@@ -8,8 +8,9 @@ import { SystemPromptSection } from './SystemPromptSection';
 import { StructurePromptSection } from './StructurePromptSection';
 import { MoyensHumainsSection } from './MoyensHumainsSection';
 import { ReferenceDocsSection } from './ReferenceDocsSection';
+import { BrandingSection } from './BrandingSection';
 
-type AdminSection = 'company' | 'moyens-humains' | 'prompt' | 'structure' | 'references';
+type AdminSection = 'company' | 'moyens-humains' | 'prompt' | 'structure' | 'references' | 'branding';
 
 interface MemoireAdminPanelProps {
   onLogout: () => void;
@@ -97,6 +98,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
                 ['prompt', 'Prompt système'],
                 ['structure', 'Structure / mise en page'],
                 ['references', 'Mémoires de référence'],
+                ['branding', 'Logos & organigramme'],
               ] as [AdminSection, string][]
             ).map(([key, label]) => (
               <button
@@ -169,6 +171,7 @@ export function MemoireAdminPanel({ onLogout }: MemoireAdminPanelProps) {
                   onChanged={refresh}
                 />
               )}
+              {activeSection === 'branding' && <BrandingSection password={adminPassword} />}
             </>
           )}
         </div>

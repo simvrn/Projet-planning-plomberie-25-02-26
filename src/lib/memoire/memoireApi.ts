@@ -1,5 +1,13 @@
 import { supabase } from '../supabase';
-import type { CompanyConfig, CorpsDeMetier, Interlocuteur, InterlocuteurPerson, ReferenceDoc } from '../../types/memoire';
+import type {
+  CompanyConfig,
+  CorpsDeMetier,
+  Entreprise,
+  EntrepriseInfo,
+  Interlocuteur,
+  InterlocuteurPerson,
+  ReferenceDoc,
+} from '../../types/memoire';
 
 /**
  * Upload un document projet (PDF, Word ou texte) dans le bucket public "memoire_project_docs".
@@ -226,7 +234,40 @@ export async function deleteReferenceDoc(password: string, id: string): Promise<
   await callMemoireAdmin('delete-reference', password, { id });
 }
 
+/**
+ * Logos (un par entreprise, clé "logo:<nom>") et organigramme commun (clé "organigramme"), avec
+ * l'adresse de chaque entreprise affichée sur la page de garde et en pied de page.
+ */
+export async function getBranding(
+  password: string
+): Promise<{ entreprises: EntrepriseInfo[]; imageUrls: Partial<Record<string, string>> }> {
+  return callMemoireAdmin('get-branding', password);
+}
+
+export async function saveEntrepriseAdresse(password: string, nom: Entreprise, adresse: string): Promise<void> {
+  await callMemoireAdmin('save-entreprise-adresse', password, { nom, adresse });
+}
+
+// Seuls PNG et JPG sont insérables tels quels dans le .docx (librairie docx côté serveur).
+const IMAGE_TYPES: Record<string, 'png' | 'jpg'> = { 'image/png': 'png', 'image/jpeg': 'jpg' };
+
+export async function uploadImage(password: string, key: string, file: File): Promise<void> {
+  const imageType = IMAGE_TYPES[file.type];
+  if (!imageType) throw new Error('Format non supporté : utilise une image PNG ou JPG.');
+  // Dimensions d'origine envoyées avec l'image : le serveur s'en sert pour garder les proportions.
+  const bitmap = await createImageBitmap(file);
+  const { width, height } = bitmap;
+  bitmap.close();
+  const fileBase64 = await fileToBase64(file);
+  await callMemoireAdmin('upload-image', password, { key, fileBase64, imageType, width, height });
+}
+
+export async function deleteImage(password: string, key: string): Promise<void> {
+  await callMemoireAdmin('delete-image', password, { key });
+}
+
 export interface GenerateMemoirePayload {
+  entreprise: Entreprise;
   interlocuteur: Interlocuteur;
   corpsDeMetier: CorpsDeMetier;
   thematiques: string[];
@@ -259,6 +300,7 @@ export async function generateMemoireStepByStep(
 ): Promise<{ downloadUrl: string; attentionDownloadUrl: string | null; usage: TokenUsage }> {
   const { generationId } = await callMemoireGenerate<{ generationId: string }>({
     action: 'start',
+    entreprise: payload.entreprise,
     interlocuteur: payload.interlocuteur,
     corpsDeMetier: payload.corpsDeMetier,
     thematiques: payload.thematiques,
@@ -289,6 +331,7 @@ export async function generateMemoireStepByStep(
         }>({
           action: 'generate-section',
           generationId,
+          entreprise: payload.entreprise,
           interlocuteur: payload.interlocuteur,
           corpsDeMetier: payload.corpsDeMetier,
           nombrePersonnes: payload.nombrePersonnes,
@@ -317,6 +360,7 @@ export async function generateMemoireStepByStep(
   }>({
     action: 'finalize',
     generationId,
+    entreprise: payload.entreprise,
     interlocuteur: payload.interlocuteur,
     corpsDeMetier: payload.corpsDeMetier,
   });

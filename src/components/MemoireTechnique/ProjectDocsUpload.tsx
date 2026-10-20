@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<ProjectDocFile['status'], string> = {
 
 export function ProjectDocsUpload() {
   const {
+    entreprise,
     interlocuteur,
     corpsDeMetier,
     thematiques,
@@ -84,11 +85,12 @@ export function ProjectDocsUpload() {
   const allReady = projectDocs.length > 0 && projectDocs.every((d) => d.status === 'ready');
 
   async function handleGenerate() {
-    if (!interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
+    if (!entreprise || !interlocuteur || !corpsDeMetier || !nombrePersonnes) return;
     startGeneration();
     try {
       const { downloadUrl, attentionDownloadUrl, usage } = await generateMemoireStepByStep(
         {
+          entreprise,
           interlocuteur,
           corpsDeMetier,
           thematiques,
